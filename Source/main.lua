@@ -30,8 +30,7 @@ cursor:setSize(25, 25)
 cursor:setZIndex(32767)
 cursor:add()
 
-cursor.vx = 0
-cursor.vy = 0
+cursor.speed = 0
 cursor.thrust = 0.5
 cursor.maxSpeed = 4
 cursor.friction = 0.95
@@ -149,44 +148,40 @@ function cursor:draw(x, y, width, height)
 end
 
 function playdate.update()
-			
-	local crankChange = playdate.getCrankChange()
-	if crankChange ~= 0 then
+
+	if playdate.getCrankChange() ~= 0 then
 		cursor:markDirty()
 	end
 
 	if playdate.buttonIsPressed(playdate.kButtonUp) then
-		local radians = math.rad(playdate.getCrankPosition() - 90)  -- Adjust for 0° being up
-		
-		cursor.vx = cursor.vx + math.cos(radians) * cursor.thrust
-		cursor.vy = cursor.vy + math.sin(radians) * cursor.thrust
+		cursor.speed = math.min(cursor.maxSpeed, cursor.speed + cursor.thrust)
+	else
+		cursor.speed = cursor.speed * cursor.friction
 	end
 	
-	if cursor.vx ~= 0 or cursor.vy ~= 0 then
-		cursor.vx = cursor.vx * cursor.friction
-		cursor.vy = cursor.vy * cursor.friction
+	
+	local radians = math.rad(playdate.getCrankPosition() - 90)  -- Adjust for 0° being up
+	
+	local vx = math.cos(radians) * cursor.speed
+	local vy = math.sin(radians) * cursor.speed
+
+	if vx ~= 0 or vy ~= 0 then
 		
-		local speed = math.sqrt(cursor.vx * cursor.vx + cursor.vy * cursor.vy)
-		if speed > cursor.maxSpeed then
-			cursor.vx = (cursor.vx / speed) * cursor.maxSpeed
-			cursor.vy = (cursor.vy / speed) * cursor.maxSpeed
+		local x, y = cursor:getPosition()
+		x += vx
+		y = math.min(pageHeight + page.tail, math.max(0, y + vy))
+		
+		if y < viewportTop then
+			gfx.setDrawOffset(0, 0 - y)
+			viewportTop = y
 		end
 		
-		local curX, curY = cursor:getPosition()
-		local toX = curX + cursor.vx
-		local toY = math.min(pageHeight + page.tail, math.max(0, curY + cursor.vy))
-		
-		if toY < viewportTop then
-			gfx.setDrawOffset(0, 0 - toY)
-			viewportTop = toY
+		if y > viewportTop + 240 then
+			gfx.setDrawOffset(0, 240 - y)
+			viewportTop = y - 240
 		end
 		
-		if toY > viewportTop + 240 then
-			gfx.setDrawOffset(0, 240 - toY)
-			viewportTop = toY - 240
-		end
-		
-		cursor:moveTo(toX % 400, toY)
+		cursor:moveTo(x % 400, y)
 	end
 
 	gfx.sprite.update()	
