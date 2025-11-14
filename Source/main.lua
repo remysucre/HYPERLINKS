@@ -11,6 +11,7 @@ local hoveredLink = nil
 local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
 gfx.setFont(fnt)
 
+-- d pad scrolling
 local scrollAnimator = nil
 local scrollEasing = playdate.easingFunctions.outQuint
 local scrollDist = 220
@@ -136,17 +137,18 @@ layout(orb)
 
 function cursor:draw(x, y, width, height)
 	local w, h = self:getSize()
-	
 	local moon = geo.point.new(math.floor(w/2)+1, h-3)
-	
 	local tran = geo.affineTransform.new()
+	
 	tran:rotate(playdate.getCrankPosition(), math.floor(w/2)+1, math.floor(h/2)+1)
 	tran:transformPoint(moon)
 	
 	local x, y = moon:unpack()
+	
 	playdate.graphics.setColor(playdate.graphics.kColorWhite)
 	gfx.fillRect(x-4, y-4, 7, 7)
 	gfx.fillRect(7, 7, 11, 11)
+	
 	playdate.graphics.setColor(playdate.graphics.kColorBlack)
 	gfx.fillRect(x-2, y-2, 3, 3)
 	gfx.fillRect(9, 9, 7, 7)
@@ -154,7 +156,7 @@ end
 
 function playdate.update()
 	
-	-- scrolling with D pad
+	-- scrolling page with D pad
 	local scrollTarget = nil
 	
 	if playdate.buttonJustPressed(playdate.kButtonDown) then
@@ -171,7 +173,7 @@ function playdate.update()
 		
 	if scrollAnimator then
 		
-		-- maintain cursor position in view
+		-- to maintain cursor position in view
 		local x, y = cursor:getPosition()
 		local viewY = y - viewportTop
 		
@@ -182,11 +184,12 @@ function playdate.update()
 		cursor:moveTo(x, viewportTop + viewY)
 	end
 	
+	-- rotate cursor if crank moves
 	if playdate.getCrankChange() ~= 0 then
 		cursor:markDirty()
 	end
 
-
+	-- UP to thrust cursor forward
 	if playdate.buttonIsPressed(playdate.kButtonUp) then
 		cursor.speed = math.min(cursor.maxSpeed, cursor.speed + cursor.thrust)
 	else
