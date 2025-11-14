@@ -11,6 +11,8 @@ local hoveredLink = nil
 local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
 gfx.setFont(fnt)
 
+local scrollAnimator = nil
+
 -- viewport
 local viewportTop = 0
 
@@ -151,6 +153,32 @@ function playdate.update()
 
 	if playdate.getCrankChange() ~= 0 then
 		cursor:markDirty()
+	end
+	
+	if playdate.buttonJustPressed(playdate.kButtonDown) then
+		scrollAnimator = gfx.animator.new(500, 80, 0, playdate.easingFunctions.outExpo)
+	end
+	
+	if playdate.buttonJustPressed(playdate.kButtonLeft) then
+		scrollAnimator = gfx.animator.new(500, -80, 0, playdate.easingFunctions.outExpo)
+	end
+	
+	local dy = 0
+	
+	if scrollAnimator then
+		dy = scrollAnimator:currentValue()
+	end
+	
+	if dy ~= 0 then
+		
+		local x, y = cursor:getPosition()
+		local viewY = y - viewportTop
+		
+		viewportTop = math.max(0, math.min(pageHeight + page.tail - 240, viewportTop + dy))
+		
+		gfx.setDrawOffset(0, 0 - viewportTop)
+		
+		cursor:moveTo(x, viewportTop + viewY)
 	end
 
 	if playdate.buttonIsPressed(playdate.kButtonUp) then
