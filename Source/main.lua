@@ -4,29 +4,96 @@ import "CoreLibs/sprites"
 local gfx = playdate.graphics
 local geo = playdate.geometry
 
+local pageHeight = 0
+local links = {}
+local hoveredLink = nil
+
 local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
 gfx.setFont(fnt)
 
-local testText, truncated = gfx.sprite.spriteWithText("Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua. Ut enim ad minim veniam, quis nostrud exercitation ullamco laboris nisi ut aliquip ex ea commodo consequat. Duis aute irure dolor in reprehenderit in voluptate velit esse cillum dolore eu fugiat nulla pariatur. Excepteur sint occaecat cupidatat non proident, sunt in culpa qui officia deserunt mollit anim id est laborum.", 400, 400)
+-- print(txt.format)
+-- 
+-- local testText, truncated = gfx.sprite.spriteWithText(txt.format, 400, 400)
 
-testText:moveTo(200, 120)
-testText:add()
+-- testText:moveTo(200, 120)
+-- testText:add()
 
 -- viewport
 local viewportTop = 0
 
--- cursor parameters
-local vx = 0
-local vy = 0
-local thrust = 0.5
-local maxSpeed = 4
-local friction = 0.95
+local page = gfx.sprite.new()
+page:setSize(100, 100)
+page:moveTo(200, 120)
+page:add()
 
+page.padding = 10
+page.width = 400 - 2 * page.padding
+page.tail = 30
+
+-- cursor
 local cursor = gfx.sprite.new()
 cursor:moveTo(200, 120)
 cursor:setSize(25, 25)
 cursor:setZIndex(32767)
 cursor:add()
+
+cursor.vx = 0
+cursor.vy = 0
+cursor.thrust = 0.5
+cursor.maxSpeed = 4
+cursor.friction = 0.95
+
+function layout(orb)
+		
+	local content = orb.content
+	local x = 0
+	local y = 0
+	local toDraw = {}
+	for word in string.gmatch(content, "%S+") do
+		local w, h = gfx.getTextSize(word)
+		if x + w > page.width then
+			y += h
+			x = 0
+		end
+		table.insert(toDraw, {
+			txt = word, 
+			x = x, 
+			y = y
+		})
+		x += w
+		
+		local sw = fnt:getTextWidth(" ")
+		if x + sw <= page.width then
+			table.insert(toDraw, {
+				txt = " ",
+				x = x,
+				y = y
+			})
+			x += sw
+		end
+	end
+	
+	pageHeight = y + page.tail
+	
+	local pageImage = gfx.image.new(page.width, pageHeight)
+	gfx.lockFocus(pageImage)
+	
+	for _, cmd in ipairs(toDraw) do
+		gfx.drawText(cmd.txt, cmd.x, cmd.y)
+	end
+	
+	gfx.unlockFocus()
+	page:setImage(pageImage)
+	page:moveTo(200, page.padding + pageHeight / 2)
+end
+
+local orb = json.decode([[
+	{
+		"content": "welcome, the entire land"
+	}
+	]])
+
+layout(orb)
 
 function cursor:draw(x, y, width, height)
 	local w, h = self:getSize()
@@ -56,23 +123,23 @@ function playdate.update()
 	if playdate.buttonIsPressed(playdate.kButtonUp) then
 		local radians = math.rad(playdate.getCrankPosition() - 90)  -- Adjust for 0° being up
 		
-		vx = vx + math.cos(radians) * thrust
-		vy = vy + math.sin(radians) * thrust
+		cursor.vx = cursor.vx + math.cos(radians) * cursor.thrust
+		cursor.vy = cursor.vy + math.sin(radians) * cursor.thrust
 	end
 	
-	if vx ~= 0 or vy ~= 0 then
-		vx = vx * friction
-		vy = vy * friction
+	if cursor.vx ~= 0 or cursor.vy ~= 0 then
+		cursor.vx = cursor.vx * cursor.friction
+		cursor.vy = cursor.vy * cursor.friction
 		
-		local speed = math.sqrt(vx * vx + vy * vy)
-		if speed > maxSpeed then
-			vx = (vx / speed) * maxSpeed
-			vy = (vy / speed) * maxSpeed
+		local speed = math.sqrt(cursor.vx * cursor.vx + cursor.vy * cursor.vy)
+		if speed > cursor.maxSpeed then
+			cursor.vx = (cursor.vx / speed) * cursor.maxSpeed
+			cursor.vy = (cursor.vy / speed) * cursor.maxSpeed
 		end
 		
 		local curX, curY = cursor:getPosition()
-		local toX = curX + vx
-		local toY = math.max(0, curY + vy)
+		local toX = curX + cursor.vx
+		local toY = math.max(0, curY + cursor.vy)
 		
 		if toY < viewportTop then
 			gfx.setDrawOffset(0, 0 - toY)
@@ -87,6 +154,5 @@ function playdate.update()
 		cursor:moveTo(toX % 400, toY)
 	end
 
-	gfx.sprite.update()
-	
+	gfx.sprite.update()	
 end
