@@ -182,6 +182,10 @@ function playdate.update()
 		gfx.setDrawOffset(0, 0 - viewportTop)
 		
 		cursor:moveTo(x, viewportTop + viewY)
+		
+		if scrollAnimator:ended() then
+			scrollAnimator = nil
+		end
 	end
 	
 	-- rotate cursor if crank moves
