@@ -151,26 +151,24 @@ end
 
 function playdate.update()
 	
+	local easing = playdate.easingFunctions.outQuint
+	
 	if playdate.buttonJustPressed(playdate.kButtonDown) then
-		scrollAnimator = gfx.animator.new(500, 80, 0, playdate.easingFunctions.outExpo)
+		local target = math.min(pageHeight + page.tail - 240, viewportTop + 220)
+		scrollAnimator = gfx.animator.new(400, viewportTop, target, easing)
 	end
 	
 	if playdate.buttonJustPressed(playdate.kButtonLeft) then
-		scrollAnimator = gfx.animator.new(500, -80, 0, playdate.easingFunctions.outExpo)
+		local target = math.max(0, viewportTop - 200)
+		scrollAnimator = gfx.animator.new(400, viewportTop, target, easing)
 	end
-	
-	local dy = 0
-	
+		
 	if scrollAnimator then
-		dy = scrollAnimator:currentValue()
-	end
-	
-	if dy ~= 0 then
 		
 		local x, y = cursor:getPosition()
 		local viewY = y - viewportTop
 		
-		viewportTop = math.max(0, math.min(pageHeight + page.tail - 240, viewportTop + dy))
+		viewportTop = scrollAnimator:currentValue()
 		
 		gfx.setDrawOffset(0, 0 - viewportTop)
 		
