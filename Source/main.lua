@@ -11,13 +11,6 @@ local hoveredLink = nil
 local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
 gfx.setFont(fnt)
 
--- print(txt.format)
--- 
--- local testText, truncated = gfx.sprite.spriteWithText(txt.format, 400, 400)
-
--- testText:moveTo(200, 120)
--- testText:add()
-
 -- viewport
 local viewportTop = 0
 
