@@ -291,7 +291,7 @@ end
 function playdate.update()
 
 	if not pageRequested then
-		fetchPage("https://remy.wang/another.json")
+		fetchPage("https://remy.wang/index.json")
 		pageRequested = true
 	end
 
