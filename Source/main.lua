@@ -3,6 +3,7 @@ import "CoreLibs/sprites"
 
 local gfx = playdate.graphics
 local geo = playdate.geometry
+local net = playdate.network
 
 local pageHeight = 0
 
@@ -44,14 +45,139 @@ cursor.thrust = 0.5
 cursor.maxSpeed = 8
 cursor.friction = 0.85
 
+-- networking
+local httpConn = nil
+local httpData = ""
+local isLoading = false
+local frameCount = 0
+local statusMessage = nil
+
+function parseURL(url)
+	local secure = string.match(url, "^https://") ~= nil
+	local host = string.match(url, "^https?://([^/]+)")
+	local path = string.match(url, "^https?://[^/]+(.*)") or "/"
+	local port = secure and 443 or 80
+	return host, port, secure, path
+end
+
+function fetchPage(url)
+	print("fetchPage called: " .. url)
+
+	if isLoading then
+		print("Already loading, skipping")
+		return
+	end
+
+	isLoading = true
+	httpData = ""
+	statusMessage = "Loading..."
+
+	local host, port, secure, path = parseURL(url)
+	print("Parsed URL - host: " .. host .. ", port: " .. port .. ", path: " .. path)
+
+	-- Check network status first
+	local status = net.getStatus()
+	print("Network status: " .. status .. " (connected=" .. net.kStatusConnected .. ")")
+
+	-- if status ~= net.kStatusConnected then
+	-- 	print("Network not connected!")
+	-- 	statusMessage = "WiFi not connected!\nConnect via Settings > System > Wi-Fi"
+	-- 	isLoading = false
+	-- 	return
+	-- end
+
+	print("Creating HTTP connection...")
+	httpConn = net.http.new(host, port, secure, "ORBIT")
+
+	if not httpConn then
+		print("HTTP connection creation failed!")
+		statusMessage = "Network access denied"
+		isLoading = false
+		return
+	end
+
+	print("HTTP connection created successfully")
+	httpConn:setConnectTimeout(10)
+	-- httpConn:setTimeout(30)
+
+	httpConn:setRequestCallback(function()
+		if not httpConn then return end
+		local bytes = httpConn:getBytesAvailable()
+		if bytes > 0 then
+			local chunk = httpConn:read(bytes)
+			if chunk then
+				httpData = httpData .. chunk
+				print("Received " .. bytes .. " bytes, total: " .. #httpData)
+			end
+		end
+	end)
+
+	httpConn:setRequestCompleteCallback(function()
+		print("Request complete callback called")
+		if not httpConn then return end
+		local err = httpConn:getError()
+		if err and err ~= "Connection closed" then
+			print("HTTP Error: " .. err)
+			statusMessage = "Error: " .. err
+			isLoading = false
+			httpConn = nil
+			return
+		end
+
+		print("Download complete, parsing JSON...")
+		-- Parse JSON and layout
+		local success, result = pcall(json.decode, httpData)
+		if not success then
+			print("JSON parse error: " .. tostring(result))
+			statusMessage = "Failed to load page"
+			isLoading = false
+			httpConn = nil
+			return
+		end
+
+		if not result or not result.content then
+			print("No content in result")
+			statusMessage = "Failed to load page"
+			isLoading = false
+			httpConn = nil
+			return
+		end
+
+		print("Calling layout...")
+		layout(result)
+		print("Layout complete, clearing status")
+		statusMessage = nil
+
+		isLoading = false
+		httpConn = nil
+	end)
+
+	print("Starting GET request...")
+	httpConn:get(path)
+	print("GET request initiated")
+end
+
 function layout(orb)
+	if not orb or not orb.content then
+		return
+	end
 
 	-- Remove old link sprites
 	for _, linkSprite in ipairs(page.linkSprites) do
-		linkSprite:remove()
+		if linkSprite then
+			linkSprite:remove()
+		end
 	end
 	page.linkSprites = {}
 	page.hoveredLink = nil
+
+	-- Reset viewport to top
+	viewportTop = 0
+	gfx.setDrawOffset(0, 0)
+
+	-- Reset cursor position
+	cursor:moveTo(200, 120)
+	cursor.speed = 0
 
 	local content = orb.content
 	local x = 0
@@ -59,44 +185,46 @@ function layout(orb)
 	local h = fnt:getHeight()
 	local toDraw = {}
 	local links = {}
-	
+
 	for i, element in ipairs(orb.content) do
-		if element.type == "plain" or element.type == "link" then
-			local x0 = x
-			local y0 = y
-			for word in string.gmatch(element.text, "%S+") do
-				local w = fnt:getTextWidth(word)
-				if x + w > page.width then
-					y += h
-					x = 0
-					x0 = 0
-					y0 = y
-				end
-				table.insert(toDraw, {
-					txt = word, 
-					x = x, 
-					y = y
-				})
-				x += w
-				
-				local sw = fnt:getTextWidth(" ")
-				if x + sw <= page.width and i < #element.text then
+		if element and element.type and (element.type == "plain" or element.type == "link") then
+			if element.text and type(element.text) == "string" then
+				local x0 = x
+				local y0 = y
+				for word in string.gmatch(element.text, "%S+") do
+					local w = fnt:getTextWidth(word)
+					if x + w > page.width then
+						y += h
+						x = 0
+						x0 = 0
+						y0 = y
+					end
 					table.insert(toDraw, {
-						txt = " ",
+						txt = word,
 						x = x,
 						y = y
 					})
-					x += sw
+					x += w
+
+					local sw = fnt:getTextWidth(" ")
+					if x + sw <= page.width then
+						table.insert(toDraw, {
+							txt = " ",
+							x = x,
+							y = y
+						})
+						x += sw
+					end
 				end
-			end
-			
-			if element.type == "link" then
-				table.insert(links, {
-					text = element.text,
-					url = element.url,
-					x = x0,
-					y = y0
-				})
+
+				if element.type == "link" then
+					table.insert(links, {
+						text = element.text,
+						url = element.url or "",
+						x = x0,
+						y = y0
+					})
+				end
 			end
 
 		elseif element.type == "vspace" then
@@ -106,164 +234,150 @@ function layout(orb)
 	end
 	
 	
-	pageHeight = y + 2 * page.padding
-	
+	pageHeight = math.max(240, y + 2 * page.padding)
+
 	local pageImage = gfx.image.new(page.width, pageHeight)
-	gfx.lockFocus(pageImage)
-	
-	for _, cmd in ipairs(toDraw) do
-		gfx.drawText(cmd.txt, cmd.x, cmd.y)
+	if not pageImage then
+		return
 	end
-	
-	gfx.unlockFocus()
+
+	gfx.pushContext(pageImage)
+
+	for _, cmd in ipairs(toDraw) do
+		if cmd and cmd.txt then
+			gfx.drawText(cmd.txt, cmd.x, cmd.y)
+		end
+	end
+
+	gfx.popContext()
 	page:setImage(pageImage)
 	page:moveTo(200, page.padding + pageHeight / 2)
 
 	for _, link in ipairs(links) do
-		local l = gfx.sprite.new()
-		l:setSize(fnt:getTextWidth(link.text), fnt:getHeight())
-		l:setCollideRect( 0, 0, l:getSize())
-		l:setBounds(0, 0, l:getSize())
-		l:setCollidesWithGroups({1})
-		l.collisionResponse = gfx.sprite.kCollisionTypeOverlap
+		if link and link.text and link.url then
+			local l = gfx.sprite.new()
+			local textWidth = fnt:getTextWidth(link.text)
+			local textHeight = fnt:getHeight()
+			l:setSize(textWidth, textHeight)
+			l:setCollideRect(0, 0, textWidth, textHeight)
+			l:setCollidesWithGroups({1})
+			l.collisionResponse = gfx.sprite.kCollisionTypeOverlap
 
-		local w, h = l:getSize()
+			local w, h = textWidth, textHeight
 
-		function l:draw(x, y, width, height)
-			-- links can only collide with the cursor
-			if #self:overlappingSprites() > 0 then
-				local lw = gfx.getLineWidth()
-				gfx.setLineWidth(2)
-				gfx.drawLine(0, h-2, w, h-2)
-				gfx.setLineWidth(lw)
-			else
-				gfx.drawLine(0, h-2, w, h-2)
+			function l:draw(x, y, width, height)
+				-- links can only collide with the cursor
+				if #self:overlappingSprites() > 0 then
+					local lw = gfx.getLineWidth()
+					gfx.setLineWidth(2)
+					gfx.drawLine(0, h-2, w, h-2)
+					gfx.setLineWidth(lw)
+				else
+					gfx.drawLine(0, h-2, w, h-2)
+				end
 			end
+
+			l:moveTo(page.padding + link.x + w/2, page.padding + link.y + h/2)
+			l.text = link.text
+			l.url = link.url
+
+			l:add()
+			table.insert(page.linkSprites, l)
 		end
-
-		l:moveTo(page.padding + link.x + w/2, page.padding + link.y + h/2)
-		l.text = link.text
-		l.url = link.url
-
-		l:add()
-		table.insert(page.linkSprites, l)
 	end
 end
-
-local orb = json.decode([[
-	{
-		"content": [
-			{ 
-				"type": "plain",
-				"text": "Lorem ipsum dolor sit amet"
-			},
-			{ 
-				"type": "link",
-				"text": "ho hoh",
-				"url": "haha"
-			},
-			{ 
-				"type": "plain",
-				"text": ", adipiscing elit. Pellentesque pellentesque mi at dignissim pharetra. Ut volutpat eu velit at lacinia. Vivamus scelerisque fringilla sapien, in imperdiet turpis. Integer eget metus eu purus tincidunt semper quis eu ipsum. Duis at lorem ut est bibendum facilisis. In vel varius erat. Donec vel lacus laoreet, condimentum orci vitae, tincidunt nisl. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi tempus tincidunt tellus, ut dictum velit convallis in. Nunc egestas rutrum dolor, id hendrerit nisl ullamcorper tempor."
-			},
-			{
-				"type": "vspace"
-			},
-			{
-				"type": "plain",
-				"text": "Vestibulum imperdiet condimentum scelerisque. Nullam efficitur placerat mi id venenatis. Nulla nibh neque, scelerisque in elit sit amet, hendrerit dignissim risus. Cras rhoncus, ligula eget sollicitudin molestie, nibh arcu mollis sapien, vel aliquet lacus mi et sem. Quisque varius diam sed dui ultrices, quis congue nunc pellentesque. Suspendisse in augue odio. Quisque porttitor erat eget feugiat aliquet. Donec"
-			},{ 
-				"type": "link",
-				"text": "jaja there",
-				"url": "haha"
-			},
-			{
-				"type": "plain",
-				"text": " varius quis. Integer vulputate eget leo nec ultrices. Fusce tempus feugiat felis. Donec ornare lacus leo, non bibendum velit vestibulum et. Nunc sed scelerisque ligula. Cras bibendum scelerisque auctor. Quisque a eros consectetur, vehicula ex eu, lobortis est."
-			},
-			{
-				"type": "vspace"
-			},
-			{
-				"type": "plain",
-				"text": "Nam at magna sit amet ipsum dignissim ornare. Morbi congue turpis id malesuada pharetra. Ut eget libero mauris. Donec dapibus cursus arcu quis suscipit. In interdum interdum ipsum quis feugiat. Nam rhoncus augue nisl, a euismod elit finibus vitae. Morbi ullamcorper lorem ante. Mauris eu rutrum velit. Aenean neque dui, ornare interdum quam ut, accumsan tempus libero. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Proin quis porta dui, nec volutpat enim. Etiam tempus quam dolor, at vehicula sapien posuere condimentum. Morbi imperdiet a nisi ac vestibulum. Phasellus dictum neque sem, et viverra purus ultricies vitae. Mauris non justo vel enim tempor finibus vitae a mauris."
-			},
-			{
-				"type": "vspace"
-			},
-			{
-				"type": "plain",
-				"text": "Nullam quis odio consectetur ipsum congue consectetur ac a leo. Vivamus blandit rutrum elit eu volutpat. Donec eu cursus lectus, quis feugiat augue. Pellentesque ac feugiat nulla. Suspendisse vitae dapibus felis, quis vulputate lectus. Class aptent taciti sociosqu ad litora torquent per conubia nostra, per inceptos himenaeos. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Integer non luctus ligula, sit amet aliquam turpis. Duis in leo libero."
-			},
-			{
-				"type": "vspace"
-			},
-			{
-				"type": "plain",
-				"text": "Sed eget luctus nisi. Vivamus ac condimentum lorem, ut volutpat turpis. Donec volutpat nibh id metus egestas dictum. Donec varius nibh at lobortis viverra. Phasellus posuere rutrum nisl maximus molestie. Suspendisse a dignissim purus, eget pellentesque turpis. Proin quis lobortis mi. Nunc blandit enim velit, vel convallis nunc dictum vel. Nunc ultricies tincidunt dui. Fusce velit elit, bibendum a nisi vel, feugiat blandit mi. Donec maximus congue ligula ac blandit. Nunc in luctus dolor. Sed sed lorem porta, placerat tellus vitae, luctus nunc. Integer tincidunt, tortor tincidunt ultrices imperdiet, enim arcu consequat eros, nec elementum eros ante et enim."
-			}
-			]
-	}
-	]])
-
-layout(orb)
 
 function cursor:draw(x, y, width, height)
 	local w, h = self:getSize()
 	local moon = geo.point.new(math.floor(w/2)+1, h-3)
 	local tran = geo.affineTransform.new()
-	
+
 	tran:rotate(playdate.getCrankPosition(), math.floor(w/2)+1, math.floor(h/2)+1)
 	tran:transformPoint(moon)
-	
+
 	local x, y = moon:unpack()
-	
+
 	playdate.graphics.setColor(playdate.graphics.kColorWhite)
 	gfx.fillRect(x-4, y-4, 7, 7)
 	gfx.fillRect(7, 7, 11, 11)
-	
+
 	playdate.graphics.setColor(playdate.graphics.kColorBlack)
 	gfx.fillRect(x-2, y-2, 3, 3)
 	gfx.fillRect(9, 9, 7, 7)
 end
 
+local accessRequested = false
+
 function playdate.update()
 	
+	if not accessGranted then
+		net.http.requestAccess()
+		accessRequested = true
+	end
+
+	frameCount += 1
+
+	-- Load initial page after a few frames
+	-- Note: net.http.new() will trigger permission dialog on first use
+	if accessRequested then
+		fetchPage("https://remy.wang/index.json")
+	end
+
+	if frameCount == 1 then
+		print("Update loop started")
+	end
+
+	-- Display status message if present
+	if statusMessage then
+		gfx.clear()
+		gfx.drawTextInRect(statusMessage, 20, 100, 360, 140)
+	end
+
 	-- scrolling page with D pad
 	local scrollTarget = nil
-	
+
 	if playdate.buttonJustPressed(playdate.kButtonDown) then
 		scrollTarget = math.min(pageHeight + page.tail - 240, viewportTop + scrollDist)
 	end
-	
+
 	if playdate.buttonJustPressed(playdate.kButtonLeft) then
 		scrollTarget = math.max(0, viewportTop - scrollDist)
 	end
-	
+
 	if scrollTarget then
 		scrollAnimator = gfx.animator.new(scrollDura, viewportTop, scrollTarget, scrollEasing)
 	end
-		
+
 	if scrollAnimator then
-		
 		-- to maintain cursor position in view
 		local x, y = cursor:getPosition()
 		local viewY = y - viewportTop
-		
+
 		viewportTop = scrollAnimator:currentValue()
-		
+
 		gfx.setDrawOffset(0, 0 - viewportTop)
-		
+
 		cursor:moveTo(x, viewportTop + viewY)
-		
+
 		if scrollAnimator:ended() then
 			scrollAnimator = nil
 		end
 	end
-	
+
 	-- rotate cursor if crank moves
 	if playdate.getCrankChange() ~= 0 then
 		cursor:markDirty()
+	end
+
+	-- A button to activate links
+	if playdate.buttonJustPressed(playdate.kButtonA) then
+		local overlapping = cursor:overlappingSprites()
+		for _, sprite in ipairs(overlapping) do
+			if sprite.url then
+				fetchPage(sprite.url)
+				break
+			end
+		end
 	end
 
 	-- UP to thrust cursor forward
@@ -272,27 +386,27 @@ function playdate.update()
 	else
 		cursor.speed = cursor.speed * cursor.friction
 	end
-		
+
 	local radians = math.rad(playdate.getCrankPosition() - 90)  -- Adjust for 0° being up
 	local vx = math.cos(radians) * cursor.speed
 	local vy = math.sin(radians) * cursor.speed
 
 	if vx ~= 0 or vy ~= 0 then
-		
+
 		local x, y = cursor:getPosition()
 		x += vx
 		y = math.min(pageHeight + page.tail, math.max(0, y + vy))
-		
+
 		if y < viewportTop then
 			gfx.setDrawOffset(0, 0 - y)
 			viewportTop = y
 		end
-		
+
 		if y > viewportTop + 240 then
 			gfx.setDrawOffset(0, 240 - y)
 			viewportTop = y - 240
 		end
-		
+
 		local _, _, cols, _ = cursor:moveWithCollisions(x % 400, y)
 		if #cols > 0 then
 			for _, col in ipairs(cols) do
@@ -301,5 +415,5 @@ function playdate.update()
 		end
 	end
 
-	gfx.sprite.update()	
+	gfx.sprite.update()
 end
