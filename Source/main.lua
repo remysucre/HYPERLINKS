@@ -124,14 +124,11 @@ function fetchPage(url)
 		return
 	end
 
-	layout(result)
+	render(result)
 end
 
-function layout(orb)
-	if not orb or not orb.content then
-		return
-	end
-
+function render(orb)
+	
 	-- Remove old link sprites
 	for _, linkSprite in ipairs(page.linkSprites) do
 		if linkSprite then
