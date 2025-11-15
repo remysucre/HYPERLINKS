@@ -113,19 +113,16 @@ function fetchPage(url)
 		return
 	end
 
-	-- Parse JSON and layout
-	local success, result = pcall(json.decode, httpData)
-	if not success or not result or not result.content then
+	-- Render md0 content
+	local success, err = pcall(render, httpData)
+	if not success then
 		gfx.clear()
-		gfx.drawTextInRect("Failed to parse page", 20, 100, 360, 140)
+		gfx.drawTextInRect("Failed to render page: " .. tostring(err), 20, 100, 360, 140)
 		return
 	end
-
-	render(result)
 end
 
-function render(orb)
-	
+function render(text)
 	-- Remove old link sprites
 	for _, linkSprite in ipairs(page.linkSprites) do
 		if linkSprite then
@@ -145,65 +142,122 @@ function render(orb)
 	-- Reset viewport to top
 	viewport:moveTo(0)
 
-	local content = orb.content
-	local x = 0
-	local y = 0
 	local h = fnt:getHeight()
+	local x, y = 0, 0
 	local toDraw = {}
-	local links = {}
+	local linkRefs = {}
 
-	for i, element in ipairs(orb.content) do
-		if element and element.type and (element.type == "plain" or element.type == "link") then
-			if element.text and type(element.text) == "string" then
-				local x0 = x
-				local y0 = y
-				local lastWordEnd = x
-				for word in string.gmatch(element.text, "%S+") do
+	-- Helper to create link sprite
+	local function createLinkSprite(text, url, lx, ly, width)
+		local l = gfx.sprite.new()
+		local textHeight = fnt:getHeight()
+		l:setSize(width, textHeight)
+		l:setCollideRect(0, 0, width, textHeight)
+		l:setCollidesWithGroups({1})
+		l.collisionResponse = gfx.sprite.kCollisionTypeOverlap
+
+		local w, h = width, textHeight
+
+		function l:draw(x, y, width, height)
+			local lw = gfx.getLineWidth()
+			if #self:overlappingSprites() > 0 then
+				gfx.setLineWidth(2)
+			end
+			gfx.drawLine(0, h-2, w, h-2)
+			gfx.setLineWidth(lw)
+		end
+
+		l:moveTo(page.padding + lx + w/2, page.padding + ly + h/2)
+		l.text = text
+		l.url = url
+
+		l:add()
+		table.insert(page.linkSprites, l)
+	end
+
+	-- Process all lines in single pass
+	for line in string.gmatch(text .. "\n", "([^\n]*)\n") do
+		-- Check if this is a link definition
+		local num, url = string.match(line, "^%[(%d+)%]:%s+(.+)$")
+		if num and url then
+			-- Create sprites for all refs to this link
+			local n = tonumber(num)
+			if linkRefs[n] then
+				for _, ref in ipairs(linkRefs[n]) do
+					createLinkSprite(ref.text, url, ref.x, ref.y, ref.width)
+				end
+			end
+		else
+			-- Content line (blank or not)
+			-- Process line word by word
+			for token in string.gmatch(line, "%S+") do
+				-- Try to match [word][n] with optional trailing characters
+				local word, num, trailing = string.match(token, "^%[(%S+)%]%[(%d+)%](.*)$")
+
+				if word and num then
+					-- Render link text
+					local x0, y0 = x, y
 					local w = fnt:getTextWidth(word)
+
 					if x + w > page.contentWidth then
 						y += h
 						x = 0
-						x0 = 0
-						y0 = y
+						x0, y0 = x, y
 					end
-					table.insert(toDraw, {
-						txt = word,
-						x = x,
-						y = y
-					})
+
+					table.insert(toDraw, {txt = word, x = x, y = y})
 					x += w
-					lastWordEnd = x  -- Track position after last word (before space)
 
-					local sw = fnt:getTextWidth(" ")
-					if x + sw <= page.contentWidth then
-						table.insert(toDraw, {
-							txt = " ",
-							x = x,
-							y = y
-						})
-						x += sw
+					-- Save link reference
+					local n = tonumber(num)
+					if not linkRefs[n] then
+						linkRefs[n] = {}
 					end
-				end
-
-				if element.type == "link" then
-					-- Use width up to last word (excluding trailing space)
-					local linkWidth = lastWordEnd - x0
-					table.insert(links, {
-						text = element.text,
-						url = element.url or "",
+					table.insert(linkRefs[n], {
+						text = word,
 						x = x0,
 						y = y0,
-						width = linkWidth
+						width = w
 					})
+
+					-- Render trailing characters if any
+					if trailing and #trailing > 0 then
+						local tw = fnt:getTextWidth(trailing)
+
+						if x + tw > page.contentWidth then
+							y += h
+							x = 0
+						end
+
+						table.insert(toDraw, {txt = trailing, x = x, y = y})
+						x += tw
+					end
+				else
+					-- Plain word
+					local w = fnt:getTextWidth(token)
+
+					if x + w > page.contentWidth then
+						y += h
+						x = 0
+					end
+
+					table.insert(toDraw, {txt = token, x = x, y = y})
+					x += w
+				end
+
+				-- Add space after word
+				local sw = fnt:getTextWidth(" ")
+				if x + sw <= page.contentWidth then
+					table.insert(toDraw, {txt = " ", x = x, y = y})
+					x += sw
 				end
 			end
 
-		elseif element.type == "vspace" then
+			-- Move to next line
 			x = 0
-			y += element.vspace or 30
+			y += h
 		end
 	end
-
 
 	local contentHeight = y + h
 	page.height = math.max(240, contentHeight + 2 * page.padding)
@@ -224,39 +278,6 @@ function render(orb)
 	gfx.popContext()
 	page:setImage(pageImage)
 	page:moveTo(200, page.height / 2)
-
-	for _, link in ipairs(links) do
-		if link and link.text and link.url then
-			local l = gfx.sprite.new()
-			local textWidth = link.width
-			local textHeight = fnt:getHeight()
-			l:setSize(textWidth, textHeight)
-			l:setCollideRect(0, 0, textWidth, textHeight)
-			l:setCollidesWithGroups({1})
-			l.collisionResponse = gfx.sprite.kCollisionTypeOverlap
-
-			local w, h = textWidth, textHeight
-
-			function l:draw(x, y, width, height)
-				-- links can only collide with the cursor
-				if #self:overlappingSprites() > 0 then
-					local lw = gfx.getLineWidth()
-					gfx.setLineWidth(2)
-					gfx.drawLine(0, h-2, w, h-2)
-					gfx.setLineWidth(lw)
-				else
-					gfx.drawLine(0, h-2, w, h-2)
-				end
-			end
-
-			l:moveTo(page.padding + link.x + w/2, page.padding + link.y + h/2)
-			l.text = link.text
-			l.url = link.url
-
-			l:add()
-			table.insert(page.linkSprites, l)
-		end
-	end
 
 	-- Set cursor to same screen position in new page
 	local newY = math.min(screenY, page.height)
@@ -288,7 +309,7 @@ local pageRequested = false
 function playdate.update()
 
 	if not pageRequested then
-		fetchPage("https://remy.wang/index.json")
+		fetchPage("https://remy.wang/orbit.md")
 		pageRequested = true
 	end
 

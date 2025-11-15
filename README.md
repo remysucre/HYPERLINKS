@@ -14,6 +14,10 @@ To build, run `pdc Source ORBIT`.
 - DOWN/LEFT - Scroll page up/down
 - RIGHT - Activate link (when hovering)
 
+**CONTENT FORMAT**
+
+ORBIT uses the [md0 format](MD0.md) for page content - a simple plain text format inspired by Markdown.
+
 **ACKNOWLEDGEMENT**
 
 ORBIT took inspiration from [HYPER METEOR](https://play.date/games/hyper-meteor/)
