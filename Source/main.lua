@@ -5,11 +5,14 @@ local gfx = playdate.graphics
 local geo = playdate.geometry
 
 local pageHeight = 0
-local links = {}
-local hoveredLink = nil
 
 local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
 gfx.setFont(fnt)
+
+-- links
+local links = {}
+local hoveredLink = nil
+local linkImg = gfx.image.new(8, 8, gfx.kColorBlack)
 
 -- d pad scrolling
 local scrollAnimator = nil
@@ -46,12 +49,15 @@ function layout(orb)
 	local content = orb.content
 	local x = 0
 	local y = 0
+	local h = fnt:getHeight()
 	local toDraw = {}
 	
-	for _, element in ipairs(orb.content) do
-		if element.type == "plain" then
+	for i, element in ipairs(orb.content) do
+		if element.type == "plain" or element.type == "link" then
+			local x0 = x
+			local y0 = y
 			for word in string.gmatch(element.text, "%S+") do
-				local w, h = gfx.getTextSize(word)
+				local w = fnt:getTextWidth(word)
 				if x + w > page.width then
 					y += h
 					x = 0
@@ -64,7 +70,7 @@ function layout(orb)
 				x += w
 				
 				local sw = fnt:getTextWidth(" ")
-				if x + sw <= page.width then
+				if x + sw <= page.width and i < #element.text then
 					table.insert(toDraw, {
 						txt = " ",
 						x = x,
@@ -73,6 +79,16 @@ function layout(orb)
 					x += sw
 				end
 			end
+			
+			if element.type == "link" then
+				table.insert(links, {
+					text = element.text,
+					url = element.url,
+					x = x0,
+					y = y0
+				})
+			end
+
 		elseif element.type == "vspace" then
 			x = 0
 			y += element.vspace or 30
@@ -92,6 +108,21 @@ function layout(orb)
 	gfx.unlockFocus()
 	page:setImage(pageImage)
 	page:moveTo(200, page.padding + pageHeight / 2)
+
+	for _, link in ipairs(links) do
+		local l = gfx.sprite.new()
+		l:setSize(fnt:getTextWidth(link.text), fnt:getHeight() + 3)
+		
+		local w, h = l:getSize()
+		
+		function l:draw(x, y, width, height)
+			local lw = gfx.getLineWidth()
+			gfx.drawLine(0, h-5, w, h-5)
+		end
+		
+		l:moveTo(page.padding + link.x + w/2, page.padding + link.y + h/2)
+		l:add()
+	end
 end
 
 local orb = json.decode([[
@@ -99,7 +130,16 @@ local orb = json.decode([[
 		"content": [
 			{ 
 				"type": "plain",
-				"text": "Lorem ipsum dolor sit amet, consectetur adipiscing elit. Pellentesque pellentesque mi at dignissim pharetra. Ut volutpat eu velit at lacinia. Vivamus scelerisque fringilla sapien, in imperdiet turpis. Integer eget metus eu purus tincidunt semper quis eu ipsum. Duis at lorem ut est bibendum facilisis. In vel varius erat. Donec vel lacus laoreet, condimentum orci vitae, tincidunt nisl. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi tempus tincidunt tellus, ut dictum velit convallis in. Nunc egestas rutrum dolor, id hendrerit nisl ullamcorper tempor."
+				"text": "Lorem ipsum dolor sit amet"
+			},
+			{ 
+				"type": "link",
+				"text": "ho hoh",
+				"url": "haha"
+			},
+			{ 
+				"type": "plain",
+				"text": ", adipiscing elit. Pellentesque pellentesque mi at dignissim pharetra. Ut volutpat eu velit at lacinia. Vivamus scelerisque fringilla sapien, in imperdiet turpis. Integer eget metus eu purus tincidunt semper quis eu ipsum. Duis at lorem ut est bibendum facilisis. In vel varius erat. Donec vel lacus laoreet, condimentum orci vitae, tincidunt nisl. Lorem ipsum dolor sit amet, consectetur adipiscing elit. Morbi tempus tincidunt tellus, ut dictum velit convallis in. Nunc egestas rutrum dolor, id hendrerit nisl ullamcorper tempor."
 			},
 			{
 				"type": "vspace"
