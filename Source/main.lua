@@ -274,8 +274,8 @@ function cursor:draw(x, y, width, height)
 	local x, y = moon:unpack()
 
 	playdate.graphics.setColor(playdate.graphics.kColorWhite)
-	gfx.fillRect(x-4, y-4, 7, 7)
-	gfx.fillRect(7, 7, 11, 11)
+	gfx.fillRect(x-3, y-3, 5, 5)
+	gfx.fillRect(8, 8, 9, 9)
 
 	playdate.graphics.setColor(playdate.graphics.kColorBlack)
 	gfx.fillRect(x-2, y-2, 3, 3)
