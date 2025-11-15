@@ -7,7 +7,7 @@ local net = playdate.network
 
 local pageHeight = 0
 
-local fnt = gfx.font.new("fonts/Asheville-Sans-14-Bold")
+local fnt = gfx.font.new("fonts/SYSTEM6")
 gfx.setFont(fnt)
 
 -- d pad scrolling
