@@ -5,8 +5,6 @@ local gfx = playdate.graphics
 local geo = playdate.geometry
 local net = playdate.network
 
-local pageHeight = 0
-
 local fnt = gfx.font.new("fonts/SYSTEM6")
 gfx.setFont(fnt)
 
@@ -26,11 +24,13 @@ function viewport:moveTo(top)
 	gfx.setDrawOffset(0, -self.top)
 end
 
+-- page
 local page = gfx.sprite.new()
 page:setSize(100, 100)
 page:moveTo(200, 120)
 page:add()
 
+page.height = 0
 page.width = 400
 page.padding = 10
 page.contentWidth = page.width - 2 * page.padding
@@ -44,9 +44,9 @@ cursor:setSize(25, 25)
 cursor:setZIndex(32767)
 cursor:setCollideRect( 7, 7, 11, 11 )
 cursor:setGroups({1})
-cursor.collisionResponse = gfx.sprite.kCollisionTypeOverlap
 cursor:add()
 
+cursor.collisionResponse = gfx.sprite.kCollisionTypeOverlap
 cursor.speed = 0
 cursor.thrust = 0.5
 cursor.maxSpeed = 8
@@ -209,9 +209,9 @@ function render(orb)
 
 
 	local contentHeight = y + h
-	pageHeight = math.max(240, contentHeight + 2 * page.padding)
+	page.height = math.max(240, contentHeight + 2 * page.padding)
 
-	local pageImage = gfx.image.new(page.width, pageHeight)
+	local pageImage = gfx.image.new(page.width, page.height)
 	if not pageImage then
 		return
 	end
@@ -226,7 +226,7 @@ function render(orb)
 
 	gfx.popContext()
 	page:setImage(pageImage)
-	page:moveTo(200, pageHeight / 2)
+	page:moveTo(200, page.height / 2)
 
 	for _, link in ipairs(links) do
 		if link and link.text and link.url then
@@ -262,7 +262,7 @@ function render(orb)
 	end
 
 	-- Set cursor to same screen position in new page
-	local newY = math.min(screenY, pageHeight)
+	local newY = math.min(screenY, page.height)
 	cursor:moveTo(cursorX, newY)
 end
 
@@ -298,7 +298,7 @@ function playdate.update()
 	local targetTop = nil
 	
 	if downPressed then
-		targetTop = math.min(math.max(pageHeight - 240, 0), viewport.top + scrollDist)
+		targetTop = math.min(math.max(page.height - 240, 0), viewport.top + scrollDist)
 	end
 
 	if leftPressed then
@@ -354,7 +354,7 @@ function playdate.update()
 
 		local x, y = cursor:getPosition()
 		x += vx
-		y = math.min(pageHeight, math.max(0, y + vy))
+		y = math.min(page.height, math.max(0, y + vy))
 
 		if y < viewport.top then
 			viewport:moveTo(y)
