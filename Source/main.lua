@@ -52,9 +52,6 @@ cursor.thrust = 0.5
 cursor.maxSpeed = 8
 cursor.friction = 0.85
 
--- networking
-local pageRequested = false
-
 function parseURL(url)
 	local secure = string.match(url, "^https://") ~= nil
 	local host = string.match(url, "^https?://([^/]+)")
@@ -284,6 +281,9 @@ function cursor:draw(x, y, width, height)
 	gfx.fillRect(x-2, y-2, 3, 3)
 	gfx.fillRect(9, 9, 7, 7)
 end
+
+-- load homepage when app starts
+local pageRequested = false
 
 function playdate.update()
 
