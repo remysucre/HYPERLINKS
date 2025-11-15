@@ -37,6 +37,9 @@ local cursor = gfx.sprite.new()
 cursor:moveTo(200, 120)
 cursor:setSize(25, 25)
 cursor:setZIndex(32767)
+cursor:setCollideRect( 7, 7, 11, 11 )
+cursor:setGroups({1})
+cursor.collisionResponse = gfx.sprite.kCollisionTypeOverlap
 cursor:add()
 
 cursor.speed = 0
@@ -113,16 +116,28 @@ function layout(orb)
 
 	for _, link in ipairs(links) do
 		local l = gfx.sprite.new()
-		l:setSize(fnt:getTextWidth(link.text), fnt:getHeight() + 3)
+		l:setSize(fnt:getTextWidth(link.text), fnt:getHeight())
+		l:setCollideRect( 0, 0, l:getSize())
+		l:setBounds(0, 0, l:getSize())
+		l:setCollidesWithGroups({1})
+		l.collisionResponse = gfx.sprite.kCollisionTypeOverlap
 		
 		local w, h = l:getSize()
 		
 		function l:draw(x, y, width, height)
-			local lw = gfx.getLineWidth()
-			gfx.drawLine(0, h-5, w, h-5)
+			-- links can only collide with the cursor
+			if #self:overlappingSprites() > 0 then
+				local lw = gfx.getLineWidth()
+				gfx.setLineWidth(2)
+				gfx.drawLine(0, h-2, w, h-2)
+				gfx.setLineWidth(lw)
+			else
+				gfx.drawLine(0, h-2, w, h-2)
+			end
 		end
 		
 		l:moveTo(page.padding + link.x + w/2, page.padding + link.y + h/2)
+		
 		l:add()
 	end
 end
@@ -270,7 +285,12 @@ function playdate.update()
 			viewportTop = y - 240
 		end
 		
-		cursor:moveTo(x % 400, y)
+		local _, _, cols, _ = cursor:moveWithCollisions(x % 400, y)
+		if #cols > 0 then
+			for _, col in ipairs(cols) do
+				col.other:markDirty()
+			end
+		end
 	end
 
 	gfx.sprite.update()	
