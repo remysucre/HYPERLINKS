@@ -271,7 +271,7 @@ function render(text)
 
 	for _, cmd in ipairs(toDraw) do
 		if cmd and cmd.txt then
-			gfx.drawText(cmd.txt, page.padding + cmd.x, page.padding + cmd.y)
+			fnt:drawText(cmd.txt, page.padding + cmd.x, page.padding + cmd.y)
 		end
 	end
 
@@ -309,7 +309,7 @@ local pageRequested = false
 function playdate.update()
 
 	if not pageRequested then
-		fetchPage("https://remy.wang/orbit.md")
+		fetchPage("https://md0.fyi/README.md")
 		pageRequested = true
 	end
 
