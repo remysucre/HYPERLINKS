@@ -39,7 +39,7 @@ page.hoveredLink = nil
 
 -- cursor
 local cursor = gfx.sprite.new()
-cursor:moveTo(128, 40)
+cursor:moveTo(130, 42)
 cursor:setSize(25, 25)
 cursor:setZIndex(32767)
 cursor:setCollideRect( 7, 7, 11, 11 )
