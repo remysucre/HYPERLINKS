@@ -13,7 +13,7 @@ Follow [instructions](https://help.play.date/games/sideloading/) to upload [`ORB
 
 **CONTENT FORMAT**
 
-ORBIT uses the [md0 format](md0.fyi) for page content - a simple plain text format inspired by Markdown.
+ORBIT uses the [md0 format](https://md0.fyi) for page content - a simple plain text format inspired by Markdown.
 
 **ACKNOWLEDGEMENT**
 
