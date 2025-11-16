@@ -39,7 +39,7 @@ page.hoveredLink = nil
 
 -- cursor
 local cursor = gfx.sprite.new()
-cursor:moveTo(200, 120)
+cursor:moveTo(128, 40)
 cursor:setSize(25, 25)
 cursor:setZIndex(32767)
 cursor:setCollideRect( 7, 7, 11, 11 )
@@ -309,7 +309,7 @@ local pageRequested = false
 function playdate.update()
 
 	if not pageRequested then
-		fetchPage("https://remy.wang/orbit.md")
+		fetchPage("https://orbit.casa/tutorial.md")
 		pageRequested = true
 	end
 

@@ -1,8 +1,11 @@
 Welcome to the HYPERSPACE!
 
-Here's your cursor:  try cranking it!
+Here's your cursor: 
+Try cranking it!
 
-Now hold the UP button to accelerate. You can push the top/bottom of the screen to scroll, and TELEPORT between the left/right border. You can also use DOWN to scroll, well, down, and LEFT to scroll back up, but that's much less exciting. Now try thrusting the cursor all the way down...
+Now hold the UP button to accelerate. You can push the top/bottom of the screen to scroll, and TELEPORT between the left/right border. 
+
+You can also use DOWN to scroll, well, down, and LEFT to scroll back up, but that's much less exciting. Now try thrusting the cursor all the way down...
 
 
 
