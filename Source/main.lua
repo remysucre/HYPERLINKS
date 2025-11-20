@@ -578,22 +578,14 @@ function playdate.update()
 	end
 
 	-- scrolling page with D pad
-	local scrollDirection = nil
 	if playdate.buttonJustPressed(playdate.kButtonDown) then
-		scrollDirection = 1  -- scroll down
-	elseif playdate.buttonJustPressed(playdate.kButtonLeft) then
-		scrollDirection = -1  -- scroll up
-	end
+		local maxTop = math.max(page.height - SCREEN_HEIGHT, 0)
+		local targetTop = math.min(maxTop, viewport.top + scroll.distance)
 
-	if scrollDirection then
-		local targetTop
-		if scrollDirection > 0 then
-			-- Scroll down
-			targetTop = math.min(math.max(page.height - SCREEN_HEIGHT, 0), viewport.top + scroll.distance)
-		else
-			-- Scroll up
-			targetTop = math.max(0, viewport.top - scroll.distance)
-		end
+		scroll.animator = gfx.animator.new(scroll.duration, viewport.top, targetTop, scroll.easing)
+	elseif playdate.buttonJustPressed(playdate.kButtonLeft) then
+		local targetTop = math.max(0, viewport.top - scroll.distance)
+
 		scroll.animator = gfx.animator.new(scroll.duration, viewport.top, targetTop, scroll.easing)
 	end
 
