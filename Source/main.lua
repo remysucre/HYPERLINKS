@@ -194,7 +194,7 @@ end
 -- LinkSprite class for interactive links
 class('LinkSprite').extends(gfx.sprite)
 
-function LinkSprite:init(text, url, x, y, width, font)
+function LinkSprite:init(text, url, x, y, width, font, linkNum)
 	LinkSprite.super.init(self)
 
 	local textHeight = font:getHeight()
@@ -208,15 +208,39 @@ function LinkSprite:init(text, url, x, y, width, font)
 	self.url = url
 	self.width = width
 	self.height = textHeight
+	self.linkNum = linkNum
+	self.relatedSprites = {}  -- Will be filled after all sprites are created
 end
 
 function LinkSprite:draw()
 	local lineWidth = gfx.getLineWidth()
-	if #self:overlappingSprites() > 0 then
+	local isHovered = #self:overlappingSprites() > 0
+
+	-- Check if any related sprite is hovered
+	if not isHovered then
+		for _, sprite in ipairs(self.relatedSprites) do
+			if sprite ~= self and #sprite:overlappingSprites() > 0 then
+				isHovered = true
+				break
+			end
+		end
+	end
+
+	if isHovered then
 		gfx.setLineWidth(2)
 	end
 	gfx.drawLine(0, self.height - 2, self.width, self.height - 2)
 	gfx.setLineWidth(lineWidth)
+end
+
+function LinkSprite:markDirty()
+	LinkSprite.super.markDirty(self)
+	-- Mark all related sprites dirty too
+	for _, sprite in ipairs(self.relatedSprites) do
+		if sprite ~= self then
+			LinkSprite.super.markDirty(sprite)
+		end
+	end
 end
 
 -- Page initialization
@@ -380,13 +404,19 @@ function parseMarkdownLinks(text, linkRefs)
 		if num and url then
 			local n = tonumber(num)
 			if linkRefs[n] then
+				local linkGroup = {}  -- All sprites for this link
 				for _, ref in ipairs(linkRefs[n]) do
 					local link = LinkSprite(ref.text, url,
 						page.padding + ref.x + ref.width / 2,
 						page.padding + ref.y + textHeight / 2,
-						ref.width, fnt)
+						ref.width, fnt, n)
 					link:add()
 					table.insert(page.linkSprites, link)
+					table.insert(linkGroup, link)
+				end
+				-- Set relatedSprites for all sprites in this link
+				for _, link in ipairs(linkGroup) do
+					link.relatedSprites = linkGroup
 				end
 			end
 		end
@@ -487,31 +517,19 @@ function layoutText(text, linkRefs)
 
 					if endWord then
 						-- Link ends with this word
-						-- First, add space before this word (we're continuing the link)
+						-- Check if we need space and if the word will fit
 						local sw = fnt:getTextWidth(" ")
-						if x + sw <= page.contentWidth then
+						local w = fnt:getTextWidth(endWord)
+
+						-- Check if word+space fits on current line
+						if x + sw + w <= page.contentWidth then
+							-- Both space and word fit
 							table.insert(toDraw, {txt = " ", x = x, y = y})
 							x = x + sw
 						else
-							-- Space wraps - save current segment and start new line
-							local segWidth = page.contentWidth - linkStartX
-							if segWidth > 0 then
-								table.insert(linkSegments, {
-									x = linkStartX,
-									y = linkStartY,
-									width = segWidth
-								})
-							end
-							y = y + h
-							x = 0
-							linkStartX, linkStartY = x, y
-						end
-
-						local w = fnt:getTextWidth(endWord)
-						if x + w > page.contentWidth then
-							-- This word wraps - save current segment if any
+							-- Word doesn't fit (with or without space) - save current segment and wrap
 							if x > linkStartX then
-								local segWidth = page.contentWidth - linkStartX
+								local segWidth = x - linkStartX
 								if segWidth > 0 then
 									table.insert(linkSegments, {
 										x = linkStartX,
@@ -569,31 +587,18 @@ function layoutText(text, linkRefs)
 						end
 					else
 						-- Middle word in link - continue accumulating
-						-- Add space before this word
 						local sw = fnt:getTextWidth(" ")
-						if x + sw <= page.contentWidth then
+						local w = fnt:getTextWidth(token)
+
+						-- Check if word+space fits on current line
+						if x + sw + w <= page.contentWidth then
+							-- Both space and word fit
 							table.insert(toDraw, {txt = " ", x = x, y = y})
 							x = x + sw
 						else
-							-- Space doesn't fit - save current segment and wrap
-							local segWidth = page.contentWidth - linkStartX
-							if segWidth > 0 then
-								table.insert(linkSegments, {
-									x = linkStartX,
-									y = linkStartY,
-									width = segWidth
-								})
-							end
-							y = y + h
-							x = 0
-							linkStartX, linkStartY = x, y
-						end
-
-						local w = fnt:getTextWidth(token)
-						if x + w > page.contentWidth then
-							-- Word itself wraps - save current segment if any
+							-- Word doesn't fit - save current segment and wrap
 							if x > linkStartX then
-								local segWidth = page.contentWidth - linkStartX
+								local segWidth = x - linkStartX
 								if segWidth > 0 then
 									table.insert(linkSegments, {
 										x = linkStartX,
