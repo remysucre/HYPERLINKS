@@ -15,7 +15,7 @@ local SCREEN_CENTER_X = 200
 local SCREEN_CENTER_Y = 120
 
 local CURSOR_SIZE = 25
-local CURSOR_COLLISION_RECT = {x = 7, y = 7, w = 11, h = 11}
+local CURSOR_COLLISION_RECT = {x = 8, y = 8, w = 9, h = 9}
 local CURSOR_ZINDEX = 32767
 
 local DOGEAR_SIZE = 20
