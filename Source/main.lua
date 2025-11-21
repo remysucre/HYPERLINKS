@@ -844,8 +844,7 @@ end
 function playdate.update()
 
 	if not initialPageLoaded then
-		-- fetchPage("https://orbit.casa/tutorial.md")
-		fetchPage("https://orbit.casa/test-multiword-links.md")
+		fetchPage("https://orbit.casa/tutorial.md")
 		initialPageLoaded = true
 	end
 
