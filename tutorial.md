@@ -1,4 +1,4 @@
-Welcome to the HYPERSPACE
+Welcome to HYPERSPACE
 
 Here's your cursor: 
 

@@ -352,7 +352,8 @@ function Link:init(text, url, linkNum, segments, font, padding)
 	print("Link init complete")
 end
 
-function Link:updateHoverState()
+function Link:update()
+	-- Only called when sprite is dirty (e.g., after collision detection)
 	local isHovered = cursor:alphaCollision(self)
 
 	-- Only redraw if hover state changed
@@ -928,11 +929,6 @@ function playdate.update()
 			for _, collision in ipairs(collisions) do
 				collision.other:markDirty()
 			end
-		end
-
-		-- Update hover state for all links
-		for _, link in ipairs(page.links) do
-			link:updateHoverState()
 		end
 	end
 
