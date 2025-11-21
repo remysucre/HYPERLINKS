@@ -191,56 +191,127 @@ function viewport:moveTo(top)
 	gfx.setDrawOffset(0, -self.top)
 end
 
--- LinkSprite class for interactive links
-class('LinkSprite').extends(gfx.sprite)
+-- Link class that represents a clickable link (extends sprite)
+class('Link').extends(gfx.sprite)
 
-function LinkSprite:init(text, url, x, y, width, font, linkNum)
-	LinkSprite.super.init(self)
+function Link:init(text, url, linkNum, segments, font, padding)
+	-- Calculate bounding box from all segments first
+	local minX = math.huge
+	local minY = math.huge
+	local maxX = -math.huge
+	local maxY = -math.huge
+
+	for _, seg in ipairs(segments) do
+		minX = math.min(minX, seg.x)
+		minY = math.min(minY, seg.y)
+		maxX = math.max(maxX, seg.x + seg.width)
+		maxY = math.max(maxY, seg.y)
+	end
 
 	local textHeight = font:getHeight()
-	self:setSize(width, textHeight)
-	self:setCollideRect(0, 0, width, textHeight)
-	self:setCollidesWithGroups({1})
-	self:moveTo(x, y)
+	local width = maxX - minX
+	local height = maxY - minY + textHeight
 
-	self.collisionResponse = gfx.sprite.kCollisionTypeOverlap
+	print("Link init:", text, "bounds:", minX, minY, maxX, maxY, "size:", width, height)
+
+	if width <= 0 or height <= 0 or width ~= width then
+		print("ERROR: Invalid dimensions!")
+		error("Invalid link dimensions: " .. tostring(width) .. "x" .. tostring(height))
+	end
+
+	Link.super.init(self)
+
 	self.text = text
 	self.url = url
-	self.width = width
-	self.height = textHeight
 	self.linkNum = linkNum
-	self.relatedSprites = {}  -- Will be filled after all sprites are created
+	self.segments = segments  -- Array of {x, y, width}
+	self.font = font
+	self.textHeight = textHeight
+
+	-- Store offset for drawing
+	self.offsetX = minX
+	self.offsetY = minY
+
+	-- Create sprite image with collision boxes and underlines
+	local image = gfx.image.new(width, height)
+	print("Link image created:", image ~= nil)
+
+	if not image then
+		error("Failed to create link image")
+	end
+
+	gfx.pushContext(image)
+
+	for _, seg in ipairs(segments) do
+		local localX = seg.x - minX
+		local localY = seg.y - minY
+
+		-- Draw white collision box
+		gfx.setColor(gfx.kColorWhite)
+		gfx.fillRect(localX, localY, seg.width, self.textHeight)
+
+		-- Draw black underline
+		gfx.setColor(gfx.kColorBlack)
+		gfx.drawLine(localX, localY + self.textHeight - 2,
+		             localX + seg.width, localY + self.textHeight - 2)
+	end
+
+	gfx.popContext()
+
+	self:setImage(image)
+	self:setSize(width, height)
+	self:setCenter(0, 0)
+	local posX = padding + minX
+	local posY = padding + minY
+	print("Link position:", posX, posY)
+	self:moveTo(posX, posY)
+	self:setZIndex(-1)  -- Above page content so links are visible
+	self:setCollideRect(0, 0, width, height)
+	self:setCollidesWithGroups({1})
+	self.collisionResponse = gfx.sprite.kCollisionTypeOverlap
+	self.wasHovered = false  -- Track hover state
+	print("Link init complete")
 end
 
-function LinkSprite:draw()
-	local lineWidth = gfx.getLineWidth()
-	local isHovered = #self:overlappingSprites() > 0
+function Link:updateHoverState()
+	local isHovered = cursor:alphaCollision(self)
 
-	-- Check if any related sprite is hovered
-	if not isHovered then
-		for _, sprite in ipairs(self.relatedSprites) do
-			if sprite ~= self and #sprite:overlappingSprites() > 0 then
-				isHovered = true
-				break
-			end
+	-- Only redraw if hover state changed
+	if isHovered ~= self.wasHovered then
+		self.wasHovered = isHovered
+		self:redrawImage(isHovered)
+	end
+end
+
+function Link:redrawImage(isHovered)
+	local width = self:getSize()
+	local height = select(2, self:getSize())
+
+	local image = gfx.image.new(width, height, gfx.kColorClear)
+	gfx.pushContext(image)
+
+	for _, seg in ipairs(self.segments) do
+		local localX = seg.x - self.offsetX
+		local localY = seg.y - self.offsetY
+
+		-- Draw white collision box
+		gfx.setColor(gfx.kColorWhite)
+		gfx.fillRect(localX, localY, seg.width, self.textHeight)
+
+		-- Draw underline (thick if hovered, thin otherwise)
+		gfx.setColor(gfx.kColorBlack)
+		if isHovered then
+			gfx.setLineWidth(2)
+		end
+		gfx.drawLine(localX, localY + self.textHeight - 2,
+		             localX + seg.width, localY + self.textHeight - 2)
+		if isHovered then
+			gfx.setLineWidth(1)
 		end
 	end
 
-	if isHovered then
-		gfx.setLineWidth(2)
-	end
-	gfx.drawLine(0, self.height - 2, self.width, self.height - 2)
-	gfx.setLineWidth(lineWidth)
-end
-
-function LinkSprite:markDirty()
-	LinkSprite.super.markDirty(self)
-	-- Mark all related sprites dirty too
-	for _, sprite in ipairs(self.relatedSprites) do
-		if sprite ~= self then
-			LinkSprite.super.markDirty(sprite)
-		end
-	end
+	gfx.popContext()
+	self:setImage(image)
 end
 
 -- Page initialization
@@ -254,8 +325,7 @@ function initializePage()
 	page.width = SCREEN_WIDTH
 	page.padding = PAGE_PADDING
 	page.contentWidth = page.width - 2 * page.padding
-	page.linkSprites = {}
-	page.hoveredLink = nil
+	page.links = {}  -- Array of Link objects
 
 	return page
 end
@@ -265,6 +335,7 @@ local page = initializePage()
 -- Cursor initialization
 function initializeCursor()
 	local cursor = gfx.sprite.new()
+
 	cursor:moveTo(130, 42)
 	cursor:setSize(CURSOR_SIZE, CURSOR_SIZE)
 	cursor:setZIndex(CURSOR_ZINDEX)
@@ -282,7 +353,44 @@ function initializeCursor()
 	return cursor
 end
 
-local cursor = initializeCursor()
+cursor = initializeCursor()  -- Global so Link sprites can access it
+
+function cursor:updateImage()
+	local w, h = self:getSize()
+	local centerX, centerY = math.floor(w / 2) + 1, math.floor(h / 2) + 1
+	local moon = geo.point.new(centerX, h - 3)
+	local transform = geo.affineTransform.new()
+
+	transform:rotate(playdate.getCrankPosition(), centerX, centerY)
+	transform:transformPoint(moon)
+
+	local moonX, moonY = moon:unpack()
+
+	-- Create new image
+	local cursorImage = gfx.image.new(CURSOR_SIZE, CURSOR_SIZE, gfx.kColorClear)
+	gfx.pushContext(cursorImage)
+
+	-- Draw collision area (white, for alphaCollision)
+	gfx.setColor(gfx.kColorWhite)
+	gfx.fillRect(CURSOR_COLLISION_RECT.x, CURSOR_COLLISION_RECT.y,
+	             CURSOR_COLLISION_RECT.w, CURSOR_COLLISION_RECT.h)
+
+	-- Draw white outer squares (visible cursor design)
+	gfx.setColor(gfx.kColorWhite)
+	gfx.fillRect(moonX - 3, moonY - 3, 5, 5)
+	gfx.fillRect(8, 8, 9, 9)
+
+	-- Draw black inner squares
+	gfx.setColor(gfx.kColorBlack)
+	gfx.fillRect(moonX - 2, moonY - 2, 3, 3)
+	gfx.fillRect(9, 9, 7, 7)
+
+	gfx.popContext()
+
+	self:setImage(cursorImage)
+end
+
+cursor:updateImage()  -- Set initial cursor image
 
 -- dog ear indicator for favorites
 local dogEar = gfx.sprite.new()
@@ -386,37 +494,45 @@ function fetchPage(url, isBack)
 	updateDogEar()
 end
 
-function cleanupLinkSprites()
-	for _, linkSprite in ipairs(page.linkSprites) do
-		if linkSprite then
-			linkSprite:remove()
+function cleanupLinks()
+	for _, link in ipairs(page.links) do
+		if link then
+			link:remove()
 		end
 	end
-	page.linkSprites = {}
-	page.hoveredLink = nil
+	page.links = {}
 end
 
 function parseMarkdownLinks(text, linkRefs)
-	-- Process all lines to extract link definitions and create sprites
-	local textHeight = fnt:getHeight()
+	-- Process all lines to extract link definitions and create Link sprites
 	for line in string.gmatch(text .. "\n", "([^\n]*)\n") do
 		local num, url = string.match(line, "^%[(%d+)%]:%s+(.+)$")
 		if num and url then
 			local n = tonumber(num)
 			if linkRefs[n] then
-				local linkGroup = {}  -- All sprites for this link
+				-- Get link text and segments
+				local linkText = linkRefs[n][1].text  -- All segments have same text
+				local segments = {}
+
+				-- Collect segment positions
 				for _, ref in ipairs(linkRefs[n]) do
-					local link = LinkSprite(ref.text, url,
-						page.padding + ref.x + ref.width / 2,
-						page.padding + ref.y + textHeight / 2,
-						ref.width, fnt, n)
-					link:add()
-					table.insert(page.linkSprites, link)
-					table.insert(linkGroup, link)
+					table.insert(segments, {
+						x = ref.x,
+						y = ref.y,
+						width = ref.width
+					})
 				end
-				-- Set relatedSprites for all sprites in this link
-				for _, link in ipairs(linkGroup) do
-					link.relatedSprites = linkGroup
+
+				-- Create Link sprite with error handling
+				local success, link = pcall(function()
+					return Link(linkText, url, n, segments, fnt, page.padding)
+				end)
+
+				if success then
+					link:add()
+					table.insert(page.links, link)
+				else
+					print("Failed to create link:", linkText, "error:", link)
 				end
 			end
 		end
@@ -656,7 +772,8 @@ function renderPageImage(toDraw, pageHeight)
 end
 
 function render(text)
-	cleanupLinkSprites()
+	print("=== render() start ===")
+	cleanupLinks()
 
 	-- Stop cursor momentum
 	cursor.speed = 0
@@ -671,44 +788,30 @@ function render(text)
 	-- Layout text and collect link references
 	local linkRefs = {}
 	local toDraw, contentHeight = layoutText(text, linkRefs)
+	print("Layout complete, contentHeight:", contentHeight, "toDraw items:", #toDraw)
 
 	-- Create link sprites from references
 	parseMarkdownLinks(text, linkRefs)
+	print("Links parsed, count:", #page.links)
 
 	-- Calculate page height and render to image
 	page.height = math.max(SCREEN_HEIGHT, contentHeight + 2 * page.padding)
 	local pageImage = renderPageImage(toDraw, page.height)
+	print("Page image created:", pageImage ~= nil, "size:", page.height)
 
 	if pageImage then
 		page:setImage(pageImage)
 		page:moveTo(SCREEN_CENTER_X, page.height / 2)
+		print("Page image set")
 
 		-- Set cursor to same screen position in new page
 		local newY = math.min(screenY, page.height)
 		cursor:moveTo(cursorX, newY)
+		print("Cursor positioned at:", cursorX, newY)
+	else
+		print("ERROR: pageImage is nil!")
 	end
-end
-
-function cursor:draw(drawX, drawY, drawWidth, drawHeight)
-	local w, h = self:getSize()
-	local centerX, centerY = math.floor(w / 2) + 1, math.floor(h / 2) + 1
-	local moon = geo.point.new(centerX, h - 3)
-	local transform = geo.affineTransform.new()
-
-	transform:rotate(playdate.getCrankPosition(), centerX, centerY)
-	transform:transformPoint(moon)
-
-	local moonX, moonY = moon:unpack()
-
-	-- Draw white outer squares
-	gfx.setColor(gfx.kColorWhite)
-	gfx.fillRect(moonX - 3, moonY - 3, 5, 5)
-	gfx.fillRect(8, 8, 9, 9)
-
-	-- Draw black inner squares
-	gfx.setColor(gfx.kColorBlack)
-	gfx.fillRect(moonX - 2, moonY - 2, 3, 3)
-	gfx.fillRect(9, 9, 7, 7)
+	print("=== render() end ===")
 end
 
 -- load homepage when app starts
@@ -772,10 +875,9 @@ function playdate.update()
 
 	-- Right button to activate links
 	if playdate.buttonJustPressed(playdate.kButtonRight) then
-		local overlapping = cursor:overlappingSprites()
-		for _, sprite in ipairs(overlapping) do
-			if sprite.url then
-				fetchPage(sprite.url)
+		for _, link in ipairs(page.links) do
+			if cursor:alphaCollision(link) then
+				fetchPage(link.url)
 				break
 			end
 		end
@@ -792,7 +894,7 @@ function playdate.update()
 	
 	-- rotate cursor if crank moves
 	if playdate.getCrankChange() ~= 0 then
-		cursor:markDirty()
+		cursor:updateImage()
 	end
 
 	-- UP to thrust cursor forward
@@ -826,6 +928,11 @@ function playdate.update()
 			for _, collision in ipairs(collisions) do
 				collision.other:markDirty()
 			end
+		end
+
+		-- Update hover state for all links
+		for _, link in ipairs(page.links) do
+			link:updateHoverState()
 		end
 	end
 
