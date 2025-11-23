@@ -98,7 +98,8 @@ end
 function showMessage(message, flush)
 	gfx.clear()
 	gfx.setDrawOffset(0, 0)
-	gfx.drawTextInRect(message, MESSAGE_RECT.x, MESSAGE_RECT.y, MESSAGE_RECT.w, MESSAGE_RECT.h)
+	-- gfx.drawTextInRect(message, MESSAGE_RECT.x, MESSAGE_RECT.y, MESSAGE_RECT.w, MESSAGE_RECT.h)
+	gfx.drawText(message, MESSAGE_RECT.x, MESSAGE_RECT.y)
 	if flush then
 		playdate.display.flush()
 	end
@@ -327,12 +328,7 @@ function parseURL(url)
 end
 
 function fetchPage(url, isBack)
-	-- Don't start a new request if one is already in progress
-	if httpData ~= nil then
-		return
-	end
 
-	-- Push current URL to history before navigating (unless going back)
 	if not isBack and currentURL then
 		table.insert(history, currentURL)
 	end
@@ -743,7 +739,7 @@ function updateFavoritesOptions()
 			table.insert(titles, fav.title)
 		end
 
-		favoritesOptions = menu:addOptionsMenuItem("Visit", titles, "tutorial", function(selectedTitle)
+		favoritesOptions = menu:addOptionsMenuItem("open", titles, "tutorial", function(selectedTitle)
 			-- Find the URL for the selected title
 			for _, fav in ipairs(favorites) do
 				if fav.title == selectedTitle then
@@ -790,7 +786,7 @@ function playdate.update()
 
 	-- Skip all actions if a page is currently loading
 	if httpData ~= nil then
-		gfx.sprite.update()
+		-- gfx.sprite.update()
 		return
 	end
 
@@ -824,7 +820,7 @@ function playdate.update()
 		for _, link in ipairs(page.links) do
 			if cursor:alphaCollision(link) then
 				fetchPage(link.url)
-				break
+				return  -- Exit immediately to show loading message
 			end
 		end
 	end
@@ -835,6 +831,7 @@ function playdate.update()
 		if #history > 0 then
 			local prevURL = table.remove(history)
 			fetchPage(prevURL, true)
+			return  -- Exit immediately to show loading message
 		end
 	end
 
