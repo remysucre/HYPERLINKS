@@ -18,10 +18,6 @@ local CURSOR_SIZE = 25
 local CURSOR_COLLISION_RECT = {x = 8, y = 8, w = 9, h = 9}
 local CURSOR_ZINDEX = 32767
 
-local DOGEAR_SIZE = 20
-local DOGEAR_ZINDEX = 32766
-local DOGEAR_POS = {x = 390, y = 10}
-
 local MESSAGE_RECT = {x = 20, y = 100, w = 360, h = 140}
 
 local PAGE_PADDING = 10
@@ -38,73 +34,24 @@ local scroll = {
 local history = {}
 local currentURL = nil
 
+-- HTTP request state (non-blocking)
+local httpData = nil  -- nil when not loading, string when loading
+
 -- favorites
-local favoritesFile = "favorites.md"
+local favoritesFile = "favorites"
 local favorites = {} -- table of {url=, title=}
 
 function loadFavorites()
-	local file = playdate.file.open(favoritesFile, playdate.file.kFileRead)
-	if not file then
-		return
+	local data = playdate.datastore.read(favoritesFile)
+	if data then
+		favorites = data
+	else
+		favorites = {}
 	end
-
-	local content = file:read(playdate.file.getSize(favoritesFile))
-	file:close()
-
-	if not content then
-		return
-	end
-
-	-- Parse md0 format to extract favorites
-	favorites = {}
-	local currentTitle = nil
-	local currentURL = nil
-
-	for line in string.gmatch(content .. "\n", "([^\n]*)\n") do
-		-- Check for link reference [n]: url
-		local num, url = string.match(line, "^%[(%d+)%]:%s+(.+)$")
-		if num and url then
-			local n = tonumber(num)
-			if favorites[n] then
-				favorites[n].url = url
-			end
-		else
-			-- Check for link text [title][n]
-			local title, num = string.match(line, "^%[([^%]]+)%]%[(%d+)%]$")
-			if title and num then
-				local n = tonumber(num)
-				favorites[n] = {title = title, url = nil}
-			end
-		end
-	end
-
-	-- Convert to array and filter out incomplete entries
-	local filtered = {}
-	for _, fav in pairs(favorites) do
-		if fav.title and fav.url then
-			table.insert(filtered, fav)
-		end
-	end
-	favorites = filtered
 end
 
 function saveFavorites()
-	local file = playdate.file.open(favoritesFile, playdate.file.kFileWrite)
-	if not file then
-		return
-	end
-
-	local content = ""
-	for i, fav in ipairs(favorites) do
-		content = content .. "[" .. fav.title .. "][" .. i .. "]\n"
-	end
-	content = content .. "\n"
-	for i, fav in ipairs(favorites) do
-		content = content .. "[" .. i .. "]: " .. fav.url .. "\n"
-	end
-
-	file:write(content)
-	file:close()
+	playdate.datastore.write(favorites, favoritesFile)
 end
 
 function isFavorited(url)
@@ -157,29 +104,6 @@ function showMessage(message, flush)
 	end
 end
 
-function openFavorites()
-	-- Read favorites file and render it locally
-	local file = playdate.file.open(favoritesFile, playdate.file.kFileRead)
-	if not file then
-		-- Create empty favorites file
-		saveFavorites()
-		file = playdate.file.open(favoritesFile, playdate.file.kFileRead)
-	end
-
-	if file then
-		local content = file:read(playdate.file.getSize(favoritesFile)) or ""
-		file:close()
-
-		-- Push current URL to history before showing favorites
-		if currentURL then
-			table.insert(history, currentURL)
-		end
-		currentURL = nil -- favorites is a local page
-		updateDogEar()
-
-		render(content)
-	end
-end
 
 -- viewport
 local viewport = {
@@ -394,31 +318,6 @@ function Link:redrawImage(isHovered)
 	self:setImage(image)
 end
 
--- dog ear indicator for favorites
-local dogEar = gfx.sprite.new()
-dogEar:setSize(DOGEAR_SIZE, DOGEAR_SIZE)
-dogEar:setZIndex(DOGEAR_ZINDEX)
-dogEar:moveTo(DOGEAR_POS.x, DOGEAR_POS.y)
-dogEar:setIgnoresDrawOffset(true)
-dogEar.visible = false
-
-function dogEar:draw(x, y, width, height)
-	if self.visible then
-		gfx.setColor(gfx.kColorBlack)
-		gfx.fillTriangle(0, 0, DOGEAR_SIZE, 0, DOGEAR_SIZE, DOGEAR_SIZE)
-	end
-end
-
-dogEar:add()
-
-function updateDogEar()
-	local shouldShow = currentURL and isFavorited(currentURL)
-	if dogEar.visible ~= shouldShow then
-		dogEar.visible = shouldShow
-		dogEar:markDirty()
-	end
-end
-
 function parseURL(url)
 	local secure = string.match(url, "^https://") ~= nil
 	local host = string.match(url, "^https?://([^/]+)")
@@ -427,20 +326,34 @@ function parseURL(url)
 	return host, port, secure, path
 end
 
-function makeHttpRequest(url)
-	local host, port, secure, path = parseURL(url)
+function fetchPage(url, isBack)
+	-- Don't start a new request if one is already in progress
+	if httpData ~= nil then
+		return
+	end
 
+	-- Push current URL to history before navigating (unless going back)
+	if not isBack and currentURL then
+		table.insert(history, currentURL)
+	end
+
+	-- Show loading message and set loading state
+	showMessage("Loading...", true)
+	httpData = ""
+
+	-- Parse URL and create HTTP connection
+	local host, port, secure, path = parseURL(url)
 	local httpConn = net.http.new(host, port, secure, "ORBIT")
 
 	if not httpConn then
-		return nil, "Network access denied"
+		showMessage("Error: Network access denied")
+		httpData = nil
+		return
 	end
 
 	httpConn:setConnectTimeout(10)
 
-	local httpData = ""
-	local requestComplete = false
-
+	-- Callback to receive data chunks
 	httpConn:setRequestCallback(function()
 		local bytes = httpConn:getBytesAvailable()
 		if bytes > 0 then
@@ -451,49 +364,34 @@ function makeHttpRequest(url)
 		end
 	end)
 
+	-- Callback when request completes
 	httpConn:setRequestCompleteCallback(function()
-		requestComplete = true
+		-- Check for errors
+		local err = httpConn:getError()
+		if err and err ~= "Connection closed" then
+			showMessage("Error: " .. err)
+			httpData = nil
+			return
+		end
+
+		-- Render the page
+		local success, renderErr = pcall(render, httpData)
+		if not success then
+			showMessage("Failed to render page: " .. tostring(renderErr))
+			httpData = nil
+			return
+		end
+
+		-- Update current URL after successful render
+		currentURL = url
+		updateFavoriteCheckmark()
+
+		-- Clear loading state
+		httpData = nil
 	end)
 
+	-- Start the request
 	httpConn:get(path)
-
-	-- Wait for request to complete
-	while not requestComplete do
-		playdate.wait(100)
-	end
-
-	-- Check for errors
-	local err = httpConn:getError()
-	if err and err ~= "Connection closed" then
-		return nil, err
-	end
-
-	return httpData, nil
-end
-
-function fetchPage(url, isBack)
-	-- Push current URL to history before navigating (unless going back)
-	if not isBack and currentURL then
-		table.insert(history, currentURL)
-	end
-
-	showMessage("Loading...", true)
-
-	local data, err = makeHttpRequest(url)
-	if err then
-		showMessage("Error: " .. err)
-		return
-	end
-
-	local success, renderErr = pcall(render, data)
-	if not success then
-		showMessage("Failed to render page: " .. tostring(renderErr))
-		return
-	end
-
-	-- Update current URL after successful render
-	currentURL = url
-	updateDogEar()
 end
 
 function cleanupLinks()
@@ -821,32 +719,79 @@ local initialPageLoaded = false
 
 -- setup menu
 local menu = playdate.getSystemMenu()
+local favoriteCheckmark = nil
+local favoritesOptions = nil
 
-menu:addMenuItem("Favorites", function()
-	openFavorites()
+function updateFavoriteCheckmark()
+	local isChecked = currentURL and isFavorited(currentURL)
+	if favoriteCheckmark then
+		favoriteCheckmark:setValue(isChecked)
+	end
+end
+
+function updateFavoritesOptions()
+	-- Remove old options menu item if it exists
+	if favoritesOptions then
+		menu:removeMenuItem(favoritesOptions)
+		favoritesOptions = nil
+	end
+
+	-- Only add options menu if there are at least 2 favorites
+	if #favorites >= 2 then
+		local titles = {}
+		for _, fav in ipairs(favorites) do
+			table.insert(titles, fav.title)
+		end
+
+		favoritesOptions = menu:addOptionsMenuItem("Visit", titles, "tutorial", function(selectedTitle)
+			-- Find the URL for the selected title
+			for _, fav in ipairs(favorites) do
+				if fav.title == selectedTitle then
+					fetchPage(fav.url)
+					break
+				end
+			end
+		end)
+	end
+end
+
+favoriteCheckmark = menu:addCheckmarkMenuItem("Save", false, function(checked)
+	if currentURL then
+		if checked then
+			local title = getTitleFromURL(currentURL)
+			addFavorite(currentURL, title)
+		else
+			removeFavorite(currentURL)
+		end
+		updateFavoritesOptions()
+	end
 end)
 
 -- Load favorites on startup
 loadFavorites()
 
--- A button held callback for favorite toggle
-function playdate.AButtonHeld()
-	if currentURL then
-		if isFavorited(currentURL) then
-			removeFavorite(currentURL)
-		else
-			local title = getTitleFromURL(currentURL)
-			addFavorite(currentURL, title)
-		end
-		updateDogEar()
-	end
+-- Ensure we have at least 2 favorites for the options menu
+if #favorites < 2 then
+	-- Clear and add defaults
+	favorites = {}
+	table.insert(favorites, {url = "https://orbit.casa/tutorial.md", title = "tutorial"})
+	table.insert(favorites, {url = "https://orbit.casa/boo.md", title = "boo"})
+	saveFavorites()
 end
+
+updateFavoritesOptions()
 
 function playdate.update()
 
 	if not initialPageLoaded then
 		fetchPage("https://orbit.casa/tutorial.md")
 		initialPageLoaded = true
+	end
+
+	-- Skip all actions if a page is currently loading
+	if httpData ~= nil then
+		gfx.sprite.update()
+		return
 	end
 
 	-- scrolling page with D pad
@@ -892,7 +837,7 @@ function playdate.update()
 			fetchPage(prevURL, true)
 		end
 	end
-	
+
 	-- rotate cursor if crank moves
 	if playdate.getCrankChange() ~= 0 then
 		cursor:updateImage()
