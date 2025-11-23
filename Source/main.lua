@@ -34,8 +34,8 @@ local scroll = {
 local history = {}
 local currentURL = nil
 
--- HTTP request state (non-blocking)
-local httpData = nil  -- nil when not loading, string when loading
+-- HTTP request data buffer
+local httpData = nil
 
 -- favorites
 local favoritesFile = "favorites"
@@ -95,14 +95,12 @@ function getTitleFromURL(url)
 end
 
 -- Utility: Display a message on screen
-function showMessage(message, flush)
+function showMessage(message)
+	playdate.stop()
 	gfx.clear()
 	gfx.setDrawOffset(0, 0)
-	-- gfx.drawTextInRect(message, MESSAGE_RECT.x, MESSAGE_RECT.y, MESSAGE_RECT.w, MESSAGE_RECT.h)
 	gfx.drawText(message, MESSAGE_RECT.x, MESSAGE_RECT.y)
-	if flush then
-		playdate.display.flush()
-	end
+	playdate.display.flush()
 end
 
 
@@ -334,7 +332,7 @@ function fetchPage(url, isBack)
 	end
 
 	-- Show loading message and set loading state
-	showMessage("Loading...", true)
+	showMessage("Loading...")
 	httpData = ""
 
 	-- Parse URL and create HTTP connection
@@ -384,6 +382,7 @@ function fetchPage(url, isBack)
 
 		-- Clear loading state
 		httpData = nil
+		playdate.start()
 	end)
 
 	-- Start the request
@@ -782,11 +781,6 @@ function playdate.update()
 	if not initialPageLoaded then
 		fetchPage("https://orbit.casa/tutorial.md")
 		initialPageLoaded = true
-	end
-
-	-- Skip all actions if a page is currently loading
-	if httpData ~= nil then
-		-- gfx.sprite.update()
 		return
 	end
 
@@ -820,18 +814,17 @@ function playdate.update()
 		for _, link in ipairs(page.links) do
 			if cursor:alphaCollision(link) then
 				fetchPage(link.url)
-				return  -- Exit immediately to show loading message
+				return
 			end
 		end
 	end
-
 
 	-- B button to go back in history
 	if playdate.buttonJustPressed(playdate.kButtonB) then
 		if #history > 0 then
 			local prevURL = table.remove(history)
 			fetchPage(prevURL, true)
-			return  -- Exit immediately to show loading message
+			return
 		end
 	end
 
