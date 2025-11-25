@@ -567,9 +567,6 @@ end
 function render(text)
 	cleanupLinks()
 
-	-- Stop cursor momentum
-	cursor.speed = 0
-
 	-- Reset viewport to top (no sprites to move since links were just cleaned up)
 	viewport.top = 0
 
@@ -705,21 +702,17 @@ function playdate.update()
 		local targetScreenX = (screenX + vx) % SCREEN_WIDTH
 		local targetScreenY = screenY + vy
 
-		-- Convert to page-relative position and clamp to page bounds
-		local pageY = targetScreenY + viewport.top
-		pageY = math.min(page.height, math.max(0, pageY))
-
-		-- Calculate screen position after clamping
-		local clampedScreenY = pageY - viewport.top
-
-		-- Push viewport if cursor would go off screen
-		if clampedScreenY < 0 then
-			viewport:moveTo(pageY)
-			clampedScreenY = 0
-		elseif clampedScreenY > SCREEN_HEIGHT then
-			viewport:moveTo(pageY - SCREEN_HEIGHT)
-			clampedScreenY = SCREEN_HEIGHT
+		-- Scroll page when cursor at screen edge and more content exists
+		if targetScreenY <= 0 and viewport.top > 0 then
+			local scrollAmount = math.min(viewport.top, -targetScreenY)
+			viewport:moveTo(viewport.top - scrollAmount)
+		elseif targetScreenY >= SCREEN_HEIGHT and viewport.top + SCREEN_HEIGHT < page.height then
+			local scrollAmount = math.min(page.height - SCREEN_HEIGHT - viewport.top, targetScreenY - SCREEN_HEIGHT)
+			viewport:moveTo(viewport.top + scrollAmount)
 		end
+
+		-- Clamp cursor to screen bounds
+		local clampedScreenY = math.max(0, math.min(SCREEN_HEIGHT, targetScreenY))
 
 		local _, _, collisions, _ = cursor:moveWithCollisions(targetScreenX, clampedScreenY)
 		for _, collision in ipairs(collisions) do
