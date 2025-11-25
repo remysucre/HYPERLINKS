@@ -11,9 +11,6 @@ gfx.setFont(fnt)
 
 -- Constants
 local SCREEN_WIDTH, SCREEN_HEIGHT = playdate.display.getSize()
-local SCREEN_CENTER_X = SCREEN_WIDTH / 2
-local SCREEN_CENTER_Y = SCREEN_HEIGHT / 2
-
 local CURSOR_SIZE = 25
 local CURSOR_COLLISION_RECT = {x = 8, y = 8, w = 9, h = 9}
 local CURSOR_ZINDEX = 32767
@@ -102,7 +99,8 @@ local viewport = {
 function initializePage()
 	local page = gfx.sprite.new()
 	page:setSize(100, 100)
-	page:moveTo(SCREEN_CENTER_X, SCREEN_CENTER_Y)
+	page:setCenter(0, 0)
+	page:moveTo(0, 0)
 	page:add()
 
 	page.height = 0
@@ -514,7 +512,7 @@ function render(text)
 
 	if pageImage then
 		page:setImage(pageImage)
-		page:moveTo(SCREEN_CENTER_X, page.height / 2)
+		page:moveTo(0, 0)
 	end
 end
 
