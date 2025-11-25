@@ -85,6 +85,15 @@ static void emit_link_fragment(json_encoder* encoder, const char* url) {
     text_reset();
 }
 
+// Emit a break element to JSON
+static void emit_break(json_encoder* encoder) {
+    encoder->addArrayMember(encoder);
+    encoder->startTable(encoder);
+    encoder->addTableMember(encoder, "type", 4);
+    encoder->writeString(encoder, "break", 5);
+    encoder->endTable(encoder);
+}
+
 // Parse markdown and return JSON string
 static int parseMarkdown(lua_State* L) {
     (void)L;
@@ -132,7 +141,8 @@ static int parseMarkdown(lua_State* L) {
                 case CMARK_NODE_PARAGRAPH:
                     // Add paragraph break (except for first paragraph)
                     if (!first_paragraph) {
-                        text_append("\n\n");
+                        emit_text_fragment(&encoder);
+                        emit_break(&encoder);
                     }
                     first_paragraph = 0;
                     break;
@@ -164,7 +174,8 @@ static int parseMarkdown(lua_State* L) {
                 case CMARK_NODE_CODE_BLOCK:
                     // Code block - add literal content
                     if (!first_paragraph) {
-                        text_append("\n\n");
+                        emit_text_fragment(&encoder);
+                        emit_break(&encoder);
                     }
                     first_paragraph = 0;
                     text_append(cmark_node_get_literal(node));

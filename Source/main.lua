@@ -385,93 +385,79 @@ local function layoutWords(text, x, y, font, contentWidth, trackSegments)
 	local draws = {}
 	local segments = trackSegments and {} or nil
 	local h = font:getHeight()
-	local segStartX, segStartY = x, y
+	local sw = font:getTextWidth(" ")
+	local segStartX, segStartY, segEndX = x, y, x
+	local pos = 1
 
-	for word in string.gmatch(text, "%S+") do
-		local w = font:getTextWidth(word)
-		local sw = font:getTextWidth(" ")
-
-		if x > 0 and x + w > contentWidth then
-			-- Save segment before wrap (if tracking)
-			if segments and x > segStartX then
-				table.insert(segments, {x = segStartX, y = segStartY, width = x - segStartX})
+	while pos <= #text do
+		-- Check for space
+		if string.sub(text, pos, pos) == " " then
+			if x + sw <= contentWidth then
+				x = x + sw
 			end
-			y = y + h
-			x = 0
-			segStartX, segStartY = x, y
-		end
+			pos = pos + 1
+		else
+			-- Find word boundary
+			local wordEnd = string.find(text, " ", pos) or #text + 1
+			local word = string.sub(text, pos, wordEnd - 1)
+			local w = font:getTextWidth(word)
 
-		table.insert(draws, {txt = word, x = x, y = y})
-		x = x + w
+			-- Wrap if needed
+			if x > 0 and x + w > contentWidth then
+				if segments and segEndX > segStartX then
+					table.insert(segments, {x = segStartX, y = segStartY, width = segEndX - segStartX})
+				end
+				y = y + h
+				x = 0
+				segStartX, segStartY, segEndX = x, y, x
+			end
 
-		if x + sw <= contentWidth then
-			table.insert(draws, {txt = " ", x = x, y = y})
-			x = x + sw
+			table.insert(draws, {txt = word, x = x, y = y})
+			x = x + w
+			segEndX = x
+			pos = wordEnd
 		end
 	end
 
-	-- Final segment (trim trailing space)
-	if segments and x > segStartX then
-		local trailingSpace = font:getTextWidth(" ")
-		local segWidth = x - segStartX - trailingSpace
-		if segWidth > 0 then
-			table.insert(segments, {x = segStartX, y = segStartY, width = segWidth})
-		end
+	-- Final segment
+	if segments and segEndX > segStartX then
+		table.insert(segments, {x = segStartX, y = segStartY, width = segEndX - segStartX})
 	end
 
 	return x, y, draws, segments
 end
 
 -- Layout fragments from cmark parser
--- fragments: array of {type="text"|"link", text=string, url=string (for links)}
+-- fragments: array of {type="text"|"link"|"break", text=string, url=string (for links)}
 -- Returns: toDraw commands, contentHeight, and populates page.links
 function layoutFragments(fragments)
 	local h = fnt:getHeight()
 	local x, y = 0, 0
 	local toDraw = {}
+
 	for _, frag in ipairs(fragments) do
-		local text = frag.text or ""
-
-		if frag.type == "link" then
-			-- Link fragment - use shared layout with segment tracking
+		if frag.type == "break" then
+			x = 0
+			y = y + h * 2  -- blank line between paragraphs
+		elseif frag.type == "link" then
 			local draws, segments
-			x, y, draws, segments = layoutWords(text, x, y, fnt, page.contentWidth, true)
-
-			for _, d in ipairs(draws) do
-				table.insert(toDraw, d)
-			end
-
-			-- Create link sprite if we have segments
+			x, y, draws, segments = layoutWords(frag.text, x, y, fnt, page.contentWidth, true)
+			for _, d in ipairs(draws) do table.insert(toDraw, d) end
 			if segments and #segments > 0 then
-				local success, link = pcall(function()
-					return Link(frag.url, segments, fnt, page.padding)
-				end)
-
+				local success, link = pcall(Link, frag.url, segments, fnt, page.padding)
 				if success then
 					link:add()
 					table.insert(page.links, link)
 				end
 			end
-
-		else
-			-- Text fragment - handle newlines and word wrapping
-			for line in string.gmatch(text .. "\n", "([^\n]*)\n") do
-				if line ~= "" then
-					local draws
-					x, y, draws = layoutWords(line, x, y, fnt, page.contentWidth, false)
-					for _, d in ipairs(draws) do
-						table.insert(toDraw, d)
-					end
-				end
-				-- Move to next line after each \n
-				x = 0
-				y = y + h
-			end
+		else -- text
+			local draws
+			x, y, draws = layoutWords(frag.text, x, y, fnt, page.contentWidth, false)
+			for _, d in ipairs(draws) do table.insert(toDraw, d) end
 		end
 	end
 
-	local contentHeight = y + h
-	return toDraw, contentHeight
+	return toDraw, y + h
 end
 
 function renderPageImage(toDraw, pageHeight)
