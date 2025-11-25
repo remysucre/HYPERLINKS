@@ -34,9 +34,6 @@ local nav = {
 	initialPageLoaded = false,
 }
 
--- Forward declaration (defined after render)
-local menu
-
 -- Favorites
 local favorites = {
 	file = "favorites",
@@ -83,6 +80,64 @@ function favorites:getTitleFromURL(url)
 	end
 	local segment = string.match(path, "/([^/]+)$") or path
 	return string.gsub(segment, "%.%w+$", "")
+end
+
+-- Menu (methods reference fetchPage which is defined later, but called after it exists)
+local menu = {
+	handle = playdate.getSystemMenu(),
+	checkmark = nil,
+	options = nil,
+}
+
+function menu:updateCheckmark()
+	if self.checkmark then
+		self.checkmark:setValue(nav.currentURL and favorites:contains(nav.currentURL))
+	end
+end
+
+function menu:updateOptions()
+	if self.options then
+		self.handle:removeMenuItem(self.options)
+		self.options = nil
+	end
+
+	if #favorites.items >= 2 then
+		local titles = {}
+		for _, fav in ipairs(favorites.items) do
+			table.insert(titles, fav.title)
+		end
+		self.options = self.handle:addOptionsMenuItem("open", titles, "tutorial", function(title)
+			for _, fav in ipairs(favorites.items) do
+				if fav.title == title then
+					fetchPage(fav.url)
+					break
+				end
+			end
+		end)
+	end
+end
+
+function menu:init()
+	self.checkmark = self.handle:addCheckmarkMenuItem("Save", false, function(checked)
+		if nav.currentURL then
+			if checked then
+				favorites:add(nav.currentURL, favorites:getTitleFromURL(nav.currentURL))
+			else
+				favorites:remove(nav.currentURL)
+			end
+			self:updateOptions()
+		end
+	end)
+
+	favorites:load()
+	if #favorites.items < 2 then
+		favorites.items = {
+			{url = "https://orbit.casa/tutorial.md", title = "tutorial"},
+			{url = "https://orbit.casa/boo.md", title = "boo"},
+		}
+		favorites:save()
+	end
+	self:updateOptions()
 end
 
 -- Viewport
@@ -435,64 +490,6 @@ function render(text)
 
 	page:setImage(pageImage)
 	page:moveTo(0, 0)
-end
-
--- Menu setup
-menu = {
-	handle = playdate.getSystemMenu(),
-	checkmark = nil,
-	options = nil,
-}
-
-function menu:updateCheckmark()
-	if self.checkmark then
-		self.checkmark:setValue(nav.currentURL and favorites:contains(nav.currentURL))
-	end
-end
-
-function menu:updateOptions()
-	if self.options then
-		self.handle:removeMenuItem(self.options)
-		self.options = nil
-	end
-
-	if #favorites.items >= 2 then
-		local titles = {}
-		for _, fav in ipairs(favorites.items) do
-			table.insert(titles, fav.title)
-		end
-		self.options = self.handle:addOptionsMenuItem("open", titles, "tutorial", function(title)
-			for _, fav in ipairs(favorites.items) do
-				if fav.title == title then
-					fetchPage(fav.url)
-					break
-				end
-			end
-		end)
-	end
-end
-
-function menu:init()
-	self.checkmark = self.handle:addCheckmarkMenuItem("Save", false, function(checked)
-		if nav.currentURL then
-			if checked then
-				favorites:add(nav.currentURL, favorites:getTitleFromURL(nav.currentURL))
-			else
-				favorites:remove(nav.currentURL)
-			end
-			self:updateOptions()
-		end
-	end)
-
-	favorites:load()
-	if #favorites.items < 2 then
-		favorites.items = {
-			{url = "https://orbit.casa/tutorial.md", title = "tutorial"},
-			{url = "https://orbit.casa/boo.md", title = "boo"},
-		}
-		favorites:save()
-	end
-	self:updateOptions()
 end
 
 menu:init()
