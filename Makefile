@@ -43,8 +43,8 @@ SRC = src/main.c \
       cmark/src/utf8.c \
       cmark/src/xml.c
 
-# List all user directories here
-UINCDIR = cmark/src
+# List all user directories here (src first for our cmark config headers)
+UINCDIR = src cmark/src
 
 # List user asm files
 UASRC =
