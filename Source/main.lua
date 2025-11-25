@@ -111,11 +111,6 @@ local viewport = {
 	top = 0
 }
 
-function viewport:moveTo(top)
-	self.top = top
-	gfx.setDrawOffset(0, -self.top)
-end
-
 -- Page initialization
 function initializePage()
 	local page = gfx.sprite.new()
@@ -133,6 +128,17 @@ function initializePage()
 end
 
 local page = initializePage()
+
+function viewport:moveTo(newTop)
+	local dy = self.top - newTop  -- positive when scrolling down (sprites move up)
+	self.top = newTop
+
+	-- Move page and all links physically
+	page:moveBy(0, dy)
+	for _, link in ipairs(page.links) do
+		link:moveBy(0, dy)
+	end
+end
 
 -- Cursor initialization
 function initializeCursor()
@@ -701,12 +707,8 @@ function render(text)
 	-- Stop cursor momentum
 	cursor.speed = 0
 
-	-- Preserve cursor's screen-relative position
-	local cursorX, cursorY = cursor:getPosition()
-	local screenY = cursorY - viewport.top
-
-	-- Reset viewport to top
-	viewport:moveTo(0)
+	-- Reset viewport to top (no sprites to move since links were just cleaned up)
+	viewport.top = 0
 
 	-- Layout text and collect link references
 	local linkRefs = {}
@@ -726,11 +728,6 @@ function render(text)
 		page:setImage(pageImage)
 		page:moveTo(SCREEN_CENTER_X, page.height / 2)
 		print("Page image set")
-
-		-- Set cursor to same screen position in new page
-		local newY = math.min(screenY, page.height)
-		cursor:moveTo(cursorX, newY)
-		print("Cursor positioned at:", cursorX, newY)
 	else
 		print("ERROR: pageImage is nil!")
 	end
@@ -846,18 +843,27 @@ function playdate.update()
 		local vx = math.cos(radians) * cursor.speed
 		local vy = math.sin(radians) * cursor.speed
 
-		local x, y = cursor:getPosition()
-		x = x + vx
-		y = math.min(page.height, math.max(0, y + vy))
+		local screenX, screenY = cursor:getPosition()
+		local targetScreenX = (screenX + vx) % SCREEN_WIDTH
+		local targetScreenY = screenY + vy
 
-		-- Keep cursor in view
-		if y < viewport.top then
-			viewport:moveTo(y)
-		elseif y - SCREEN_HEIGHT > viewport.top then
-			viewport:moveTo(y - SCREEN_HEIGHT)
+		-- Convert to page-relative position and clamp to page bounds
+		local pageY = targetScreenY + viewport.top
+		pageY = math.min(page.height, math.max(0, pageY))
+
+		-- Calculate screen position after clamping
+		local clampedScreenY = pageY - viewport.top
+
+		-- Push viewport if cursor would go off screen
+		if clampedScreenY < 0 then
+			viewport:moveTo(pageY)
+			clampedScreenY = 0
+		elseif clampedScreenY > SCREEN_HEIGHT then
+			viewport:moveTo(pageY - SCREEN_HEIGHT)
+			clampedScreenY = SCREEN_HEIGHT
 		end
 
-		local _, _, collisions, _ = cursor:moveWithCollisions(x % SCREEN_WIDTH, y)
+		local _, _, collisions, _ = cursor:moveWithCollisions(targetScreenX, clampedScreenY)
 		for _, collision in ipairs(collisions) do
 			collision.other:markDirty()
 		end
@@ -876,12 +882,7 @@ function playdate.update()
 	end
 
 	if scroll.animator then
-		-- Maintain cursor position in viewport during scroll
-		local x, y = cursor:getPosition()
-		local dy = y - viewport.top
-
 		viewport:moveTo(scroll.animator:currentValue())
-		cursor:moveTo(x, viewport.top + dy)
 		if scroll.animator:ended() then
 			scroll.animator = nil
 		end
