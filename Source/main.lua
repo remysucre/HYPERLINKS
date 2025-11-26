@@ -312,8 +312,10 @@ end
 function Link:drawSegments(image, isHovered)
 	gfx.pushContext(image)
 
-	-- Group segments by Y position for continuous underlines per line
-	local lineGroups = {}
+	if isHovered then
+		gfx.setLineWidth(2)
+	end
+
 	for _, seg in ipairs(self.segments) do
 		local localX = seg.x - self.offsetX
 		local localY = seg.y - self.offsetY
@@ -322,24 +324,12 @@ function Link:drawSegments(image, isHovered)
 		gfx.setColor(gfx.kColorWhite)
 		gfx.fillRect(localX, localY, seg.w, self.textHeight)
 
-		-- Group by Y for underline drawing
-		if not lineGroups[localY] then
-			lineGroups[localY] = {minX = localX, maxX = localX + seg.w}
-		else
-			lineGroups[localY].minX = math.min(lineGroups[localY].minX, localX)
-			lineGroups[localY].maxX = math.max(lineGroups[localY].maxX, localX + seg.w)
-		end
+		-- Draw underline
+		gfx.setColor(gfx.kColorBlack)
+		gfx.drawLine(localX, localY + self.textHeight - 2,
+		             localX + seg.w, localY + self.textHeight - 2)
 	end
 
-	-- Draw one continuous underline per line
-	gfx.setColor(gfx.kColorBlack)
-	if isHovered then
-		gfx.setLineWidth(2)
-	end
-	for y, line in pairs(lineGroups) do
-		gfx.drawLine(line.minX, y + self.textHeight - 2,
-		             line.maxX, y + self.textHeight - 2)
-	end
 	if isHovered then
 		gfx.setLineWidth(1)
 	end
@@ -434,12 +424,17 @@ local function layoutWords(text, x, y, font, contentWidth)
 	local segments = {}
 	local h = font:getHeight()
 	local sw = font:getTextWidth(" ")
+	local tracking = font:getTracking()
 	local pos = 1
+
+	local segment = ""
+	local segX, segY = x, y
 
 	while pos <= #text do
 		if string.sub(text, pos, pos) == " " then
 			if x + sw <= contentWidth then
-				x = x + sw
+				x = x + sw + tracking
+				segment = segment .. " "
 			end
 			pos = pos + 1
 		else
@@ -449,15 +444,20 @@ local function layoutWords(text, x, y, font, contentWidth)
 
 			-- Wrap if needed
 			if x > 0 and x + w > contentWidth then
+				table.insert(segments, {x = segX, y = segY, text = segment})
 				y = y + h
 				x = 0
+				segment = ""
+				segX, segY = x, y
 			end
 
-			table.insert(segments, {x = x, y = y, text = word})
-			x = x + w
+			x = x + w + tracking
+			segment = segment .. word
 			pos = wordEnd
 		end
 	end
+
+	table.insert(segments, {x = segX, y = segY, text = segment})
 
 	return x, y, segments
 end
