@@ -9,6 +9,10 @@ local net = playdate.network
 local fnt = gfx.font.new("fonts/SYSTEM6")
 gfx.setFont(fnt)
 
+local directory = "https://orbit.casa/directory.md"
+local tutorial  = "https://orbit.casa/tutorial.md"
+local back      = "https://orbit.casa/back.md"
+
 -- Constants
 local SCREEN_WIDTH, SCREEN_HEIGHT = playdate.display.getSize()
 local CURSOR_SIZE = 25
@@ -63,6 +67,10 @@ function favorites:add(url, title)
 end
 
 function favorites:remove(url)
+	if url == tutorial or url == directory then
+		return  -- Prevent removing default favorites
+	end
+
 	for i, fav in ipairs(self.items) do
 		if fav.url == url then
 			table.remove(self.items, i)
@@ -132,8 +140,8 @@ function menu:init()
 	favorites:load()
 	if #favorites.items < 2 then
 		favorites.items = {
-			{url = "https://orbit.casa/tutorial.md", title = "tutorial"},
-			{url = "https://orbit.casa/boo.md", title = "boo"},
+			{url = tutorial, title = "tutorial"},
+			{url = directory, title = "directory"},
 		}
 		favorites:save()
 	end
@@ -567,7 +575,7 @@ end
 
 function playdate.update()
 	if not nav.initialPageLoaded then
-		fetchPage("https://orbit.casa/tutorial.md")
+		fetchPage(tutorial)
 		nav.initialPageLoaded = true
 	end
 
