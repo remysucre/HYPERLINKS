@@ -173,7 +173,9 @@ end
 local page = initializePage()
 
 function viewport:moveTo(newTop)
-	local dy = self.top - newTop  -- positive when scrolling down (sprites move up)
+	newTop = math.floor(newTop + 0.5)
+	if newTop == self.top then return end
+	local dy = self.top - newTop
 	self.top = newTop
 
 	-- Move page and all links physically
