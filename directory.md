@@ -8,4 +8,4 @@ WELCOME TO HYPERSPACE
 
 [long link test](https://orbit.casa/long.md)
 
-[cern](http://cern.la/hypertext/WWW/TheProject.md)
+[cern](https://cern.la/hypertext/WWW/TheProject.md)
