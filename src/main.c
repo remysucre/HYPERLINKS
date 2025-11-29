@@ -68,7 +68,7 @@ static Clay_Dimensions measureText(Clay_StringSlice text, Clay_TextElementConfig
     memcpy(temp, text.chars, len);
     temp[len] = '\0';
 
-    int width = pd->graphics->getTextWidth(page_font, temp, len, kUTF8Encoding, 1);
+    int width = pd->graphics->getTextWidth(page_font, temp, len, kUTF8Encoding, 1) + 1;
 
     return (Clay_Dimensions){
         .width = (float)width,
