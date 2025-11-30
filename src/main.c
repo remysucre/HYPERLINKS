@@ -177,6 +177,9 @@ static void buildLayout(const char* markdown) {
         .wrapMode = CLAY_TEXT_WRAP_WORDS
     };
 
+    // Set large layout height to allow content to expand beyond screen
+    Clay_SetLayoutDimensions((Clay_Dimensions){ .width = CONTENT_WIDTH, .height = 10000 });
+
     // Begin Clay layout
     Clay_BeginLayout();
 
